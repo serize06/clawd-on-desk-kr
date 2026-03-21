@@ -50,7 +50,7 @@
     "files": [
       "src/**/*",
       "assets/svg/**/*",
-      "assets/tray-icon.png",
+      "assets/tray-icon*.png",
       "hooks/**/*"
     ],
     "extraResources": [

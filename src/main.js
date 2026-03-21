@@ -182,7 +182,7 @@ let contextMenu;
 let doNotDisturb = false;
 let isQuitting = false;
 let showTray = true;
-let showDock = false;
+let showDock = true;
 
 function sendToRenderer(channel, ...args) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
@@ -809,9 +809,13 @@ function startHttpServer() {
 // ── System tray ──
 function createTray() {
   if (tray) return;
-  const traySize = isMac ? 16 : 32;
-  const icon = nativeImage.createFromPath(path.join(__dirname, "../assets/tray-icon.png")).resize({ width: traySize, height: traySize });
-  if (isMac) icon.setTemplateImage(true);
+  let icon;
+  if (isMac) {
+    icon = nativeImage.createFromPath(path.join(__dirname, "../assets/tray-iconTemplate.png"));
+    icon.setTemplateImage(true);
+  } else {
+    icon = nativeImage.createFromPath(path.join(__dirname, "../assets/tray-icon.png")).resize({ width: 32, height: 32 });
+  }
   tray = new Tray(icon);
   tray.setToolTip("Clawd Desktop Pet");
   buildTrayMenu();
@@ -1475,6 +1479,14 @@ if (!gotTheLock) {
   app.on("second-instance", () => {
     if (win) win.showInactive();
   });
+
+  // macOS: hide dock icon early if user previously disabled it
+  if (isMac && app.dock) {
+    const prefs = loadPrefs();
+    if (prefs && prefs.showDock === false) {
+      app.dock.hide();
+    }
+  }
 
   app.whenReady().then(createWindow);
 
