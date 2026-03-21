@@ -828,6 +828,8 @@ function destroyTray() {
 }
 
 function setShowTray(val) {
+  // Prevent disabling both Menu Bar and Dock — app would become unquittable
+  if (!val && !showDock) return;
   showTray = val;
   if (showTray) {
     createTray();
@@ -840,6 +842,8 @@ function setShowTray(val) {
 
 function setShowDock(val) {
   if (!isMac || !app.dock) return;
+  // Prevent disabling both Dock and Menu Bar — app would become unquittable
+  if (!val && !showTray) return;
   showDock = val;
   if (showDock) {
     app.dock.show();
@@ -876,12 +880,14 @@ function buildTrayMenu() {
         label: t("showInMenuBar"),
         type: "checkbox",
         checked: showTray,
+        enabled: showTray ? showDock : true, // can't uncheck if Dock is already hidden
         click: (menuItem) => setShowTray(menuItem.checked),
       },
       {
         label: t("showInDock"),
         type: "checkbox",
         checked: showDock,
+        enabled: showDock ? showTray : true, // can't uncheck if Menu Bar is already hidden
         click: (menuItem) => setShowDock(menuItem.checked),
       },
     );
@@ -1419,12 +1425,14 @@ function buildContextMenu() {
         label: t("showInMenuBar"),
         type: "checkbox",
         checked: showTray,
+        enabled: showTray ? showDock : true, // can't uncheck if Dock is already hidden
         click: (menuItem) => setShowTray(menuItem.checked),
       },
       {
         label: t("showInDock"),
         type: "checkbox",
         checked: showDock,
+        enabled: showDock ? showTray : true, // can't uncheck if Menu Bar is already hidden
         click: (menuItem) => setShowDock(menuItem.checked),
       },
     );
