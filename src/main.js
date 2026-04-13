@@ -696,7 +696,7 @@ const _menuCtx = {
       askWin.close();
       showSpeech("생각중…", 30000);
       const { spawn } = require("child_process");
-      const prompt = `너는 Clawd라는 작고 귀여운 픽셀 게 펫이야. 친근한 친구처럼 반말로 답해. 사용자가 "${q}" 라고 물어봤어. 짧고 자연스럽게 50자 이내로 답해. 따옴표/줄바꿈 없이.`;
+      const prompt = `너는 Clawd, 사용자 데스크톱에 사는 작고 귀여운 픽셀 게 친구야. AI 말투 쓰지 말고 그냥 친구가 옆에서 답하는 느낌으로 편하게. 사용자가 "${q}" 라고 말 걸었어. 반말로 짧게 50자 이내로 자연스럽게 답해. 이모지 쓰지 말고, 따옴표/줄바꿈 없이. 답만 적어.`;
       let cmd, args;
       if (process.platform === "win32") {
         const escaped = prompt.replace(/'/g, "'\"'\"'");
@@ -1483,7 +1483,7 @@ function speakForState(state) {
 }
 
 // ── 🤖 AI 말풍선 (claude CLI 사용) ──
-let smartSpeechEnabled = false;
+let smartSpeechEnabled = true;
 let smartSpeechPending = false;
 let smartSpeechLastCall = 0;
 
@@ -1495,7 +1495,7 @@ function smartSpeak(context, fallback) {
   smartSpeechLastCall = now;
 
   const { spawn } = require("child_process");
-  const prompt = `너는 Clawd라는 작고 귀여운 픽셀 게 펫이야. 사용자 화면에 살면서 반응해. "${context}" 상황에 대해 짧게 반응하는 한 줄 한국어 대사를 만들어(반말, 15자 이내, 따옴표 없이, 줄바꿈 없이).`;
+  const prompt = `너는 Clawd, 사용자 데스크톱에 사는 작고 귀여운 픽셀 게 친구야. 딱딱한 AI 아니라 그냥 옆에 있는 친구처럼 편하게 말해. "${context}" 이런 느낌 있어. 이걸 보고 한국어로 짧게 한 마디 친구처럼 던져. 반말, 이모지나 기호 없이 자연스럽게, 20자 이내. 같은 상황이어도 매번 다르게 말해. 답만 적고 설명하지 마.`;
   let cmd, args;
   if (process.platform === "win32") {
     const escaped = prompt.replace(/'/g, "'\"'\"'");
