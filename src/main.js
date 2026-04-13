@@ -713,15 +713,7 @@ const _menuCtx = {
       showSpeech("생각중…", 30000);
       const { spawn } = require("child_process");
       const prompt = `너는 Clawd, 사용자 데스크톱에 사는 작고 귀여운 픽셀 게 친구야. AI 말투 쓰지 말고 그냥 친구가 옆에서 답하는 느낌으로 편하게. 사용자가 "${q}" 라고 말 걸었어. 반말로 짧게 50자 이내로 자연스럽게 답해. 이모지 쓰지 말고, 따옴표/줄바꿈 없이. 답만 적어.`;
-      let cmd, args;
-      if (process.platform === "win32") {
-        const escaped = prompt.replace(/'/g, "'\"'\"'");
-        cmd = "wsl.exe";
-        args = ["-d", "Ubuntu", "--", "bash", "-c", `export PATH="$HOME/.local/bin:$PATH"; claude --model haiku -p '${escaped}'`];
-      } else {
-        cmd = "claude";
-        args = ["--model", "haiku", "-p", prompt];
-      }
+      const [cmd, args] = buildClaudeCliSpawn(prompt);
       const child = spawn(cmd, args, { timeout: 60000, windowsHide: true });
       let out = "", err = "";
       child.stdout.on("data", d => out += d.toString());
@@ -1536,15 +1528,7 @@ function smartSpeak(context, fallback) {
 
   const { spawn } = require("child_process");
   const prompt = `너는 Clawd, 사용자 데스크톱에 사는 작고 귀여운 픽셀 게 친구야. 딱딱한 AI 아니라 그냥 옆에 있는 친구처럼 편하게 말해. "${context}" 이런 느낌 있어. 이걸 보고 한국어로 짧게 한 마디 친구처럼 던져. 반말, 이모지나 기호 없이 자연스럽게, 20자 이내. 같은 상황이어도 매번 다르게 말해. 답만 적고 설명하지 마.`;
-  let cmd, args;
-  if (process.platform === "win32") {
-    const escaped = prompt.replace(/'/g, "'\"'\"'");
-    cmd = "wsl.exe";
-    args = ["-d", "Ubuntu", "--", "bash", "-c", `export PATH="$HOME/.local/bin:$PATH"; claude --model haiku -p '${escaped}'`];
-  } else {
-    cmd = "claude";
-    args = ["--model", "haiku", "-p", prompt];
-  }
+  const [cmd, args] = buildClaudeCliSpawn(prompt);
   const child = spawn(cmd, args, { timeout: 15000 });
   let out = "";
   child.stdout.on("data", d => out += d.toString());
@@ -1577,27 +1561,121 @@ function getActiveUserSession() {
   return best;
 }
 
-// 에이전트별 transcript 디렉토리
+// Windows 네이티브 claude.exe 경로 자동 감지 (캐시)
+let _winClaudeExeCache = null;
+function findWindowsClaudeExe() {
+  if (_winClaudeExeCache !== null) return _winClaudeExeCache || null;
+  if (process.platform !== "win32") { _winClaudeExeCache = ""; return null; }
+  const fs = require("fs");
+  const path = require("path");
+  const os = require("os");
+  const candidates = [
+    path.join(os.homedir(), ".local", "bin", "claude.exe"),
+    path.join(os.homedir(), "AppData", "Local", "Programs", "claude", "claude.exe"),
+  ];
+  for (const c of candidates) {
+    try { if (fs.statSync(c).isFile()) { _winClaudeExeCache = c; return c; } } catch {}
+  }
+  _winClaudeExeCache = "";
+  return null;
+}
+
+// Claude CLI spawn 명령+인자 생성 (Windows 네이티브 > WSL fallback)
+function buildClaudeCliSpawn(prompt) {
+  if (process.platform === "win32") {
+    const exe = findWindowsClaudeExe();
+    if (exe) return [exe, ["--model", "haiku", "-p", prompt]];
+    // WSL fallback
+    const escaped = prompt.replace(/'/g, "'\"'\"'");
+    // distro 자동 감지: claude 있는 distro 중 첫 번째
+    const distro = findWslClaudeDistro() || "Ubuntu";
+    return ["wsl.exe", ["-d", distro, "--", "bash", "-c",
+      `export PATH="$HOME/.local/bin:$PATH"; claude --model haiku -p '${escaped}'`]];
+  }
+  return ["claude", ["--model", "haiku", "-p", prompt]];
+}
+
+let _wslClaudeDistroCache = null;
+function findWslClaudeDistro() {
+  if (_wslClaudeDistroCache !== null) return _wslClaudeDistroCache || null;
+  try {
+    const { execSync } = require("child_process");
+    const out = execSync("wsl.exe -l -q", { encoding: "utf16le", timeout: 3000 }).toString();
+    const distros = out.split(/\r?\n/).map(s => s.trim()).filter(s => s && !s.includes("docker"));
+    for (const d of distros) {
+      try {
+        execSync(`wsl.exe -d ${d} -- bash -c 'command -v claude >/dev/null 2>&1 || test -x $HOME/.local/bin/claude'`,
+          { timeout: 3000 });
+        _wslClaudeDistroCache = d;
+        return d;
+      } catch {}
+    }
+  } catch {}
+  _wslClaudeDistroCache = "";
+  return null;
+}
+
+// WSL distro + 사용자 자동 감지 → 가능한 UNC 경로 후보 반환
+let _wslHomeCache = null;
+function getWslHomes() {
+  if (_wslHomeCache) return _wslHomeCache;
+  const results = [];
+  try {
+    const { execSync } = require("child_process");
+    // 실행 중인 WSL distro 목록 (verbose)
+    let out = "";
+    try {
+      out = execSync("wsl.exe -l -q", { encoding: "utf16le", timeout: 3000 }).toString();
+    } catch { out = ""; }
+    const distros = out.split(/\r?\n/).map(s => s.trim()).filter(s => s && !s.includes("docker"));
+    for (const distro of distros.length ? distros : ["Ubuntu"]) {
+      // 각 distro에서 $HOME 확인
+      let home = "";
+      try {
+        home = execSync(`wsl.exe -d ${distro} -- bash -c 'echo $HOME'`, { timeout: 3000 }).toString().trim();
+      } catch {}
+      if (home) {
+        const winPath = `\\\\wsl.localhost\\${distro}${home.replace(/\//g, "\\")}`;
+        results.push(winPath);
+      }
+    }
+  } catch {}
+  _wslHomeCache = results;
+  return results;
+}
+
+// 에이전트별 transcript 디렉토리 (Windows 홈 + 모든 WSL distro 홈 모두 탐색)
 function getTranscriptBases(agentId) {
   const path = require("path");
   const os = require("os");
-  const WSL_HOME = "\\\\wsl.localhost\\Ubuntu\\home\\serize";
-  const HOME = os.homedir();
-  const map = {
-    "claude-code": [`${WSL_HOME}\\.claude\\projects`, path.join(HOME, ".claude", "projects")],
-    "codex":       [`${WSL_HOME}\\.codex\\sessions`,  path.join(HOME, ".codex",  "sessions")],
-    "gemini-cli":  [`${WSL_HOME}\\.gemini\\sessions`, path.join(HOME, ".gemini", "sessions"),
-                    `${WSL_HOME}\\.gemini`, path.join(HOME, ".gemini")],
-    "copilot-cli": [`${WSL_HOME}\\.copilot`,          path.join(HOME, ".copilot")],
-    "opencode":    [`${WSL_HOME}\\.config\\opencode`, path.join(HOME, ".config", "opencode"),
-                    path.join(HOME, "AppData", "Roaming", "opencode")],
-    "cursor-agent":[path.join(HOME, "AppData", "Roaming", "Cursor", "logs"),
-                    path.join(HOME, "AppData", "Roaming", "Cursor", "User", "History")],
-    "kiro-cli":    [`${WSL_HOME}\\.kiro`, path.join(HOME, ".kiro")],
-    "codebuddy":   [`${WSL_HOME}\\.codebuddy`, path.join(HOME, ".codebuddy")],
-    "vscode-agent":[path.join(HOME, "AppData", "Roaming", "Code", "logs")],
+  const WIN_HOME = os.homedir();
+  const wslHomes = process.platform === "win32" ? getWslHomes() : [];
+  const homes = [WIN_HOME, ...wslHomes];
+
+  const subdirs = {
+    "claude-code": [[".claude", "projects"]],
+    "codex":       [[".codex", "sessions"]],
+    "gemini-cli":  [[".gemini", "sessions"], [".gemini"]],
+    "copilot-cli": [[".copilot"]],
+    "opencode":    [[".config", "opencode"], ["AppData", "Roaming", "opencode"]],
+    "cursor-agent":[["AppData", "Roaming", "Cursor", "logs"], ["AppData", "Roaming", "Cursor", "User", "History"]],
+    "kiro-cli":    [[".kiro"]],
+    "codebuddy":   [[".codebuddy"]],
+    "vscode-agent":[["AppData", "Roaming", "Code", "logs"]],
   };
-  return map[agentId] || map["claude-code"];
+  const want = subdirs[agentId] || subdirs["claude-code"];
+  const result = [];
+  for (const home of homes) {
+    for (const parts of want) {
+      // WSL UNC 경로면 \ 구분자, 일반 Windows면 path.join
+      if (home.startsWith("\\\\")) {
+        result.push(home + "\\" + parts.join("\\"));
+      } else {
+        result.push(path.join(home, ...parts));
+      }
+    }
+  }
+  return result;
 }
 
 // 가장 최근 transcript JSONL 찾기 (agent에 맞는 디렉토리만)
@@ -1709,18 +1787,7 @@ function speakAboutConversation() {
   const prompt = `너는 친구가 AI랑 대화하는 걸 옆에서 지켜보는 귀여운 픽셀 게 펫 Clawd야. AI 말투 쓰지 말고 그냥 친구가 옆에서 한 마디 던지듯 반응해.\n\n사용자: ${ex.user || "(없음)"}\nAI 답변: ${ex.assistant || "(없음)"}\n\n이 대화에 대해 친구처럼 한 마디 해. 30자 이내, 반말, 이모지/따옴표 없이. 답만 적어.`;
 
   const { spawn } = require("child_process");
-  const escaped = prompt.replace(/'/g, "'\"'\"'").replace(/\n/g, "\\n");
-  let cmd, args;
-  if (process.platform === "win32") {
-    cmd = "wsl.exe";
-    args = ["-d", "Ubuntu", "--", "bash", "-c", `export PATH="$HOME/.local/bin:$PATH"; echo '${escaped}' | xargs -0 -I{} claude --model haiku -p {}`];
-    // xargs 복잡하면 stdin 사용
-    args = ["-d", "Ubuntu", "--", "bash", "-c", `export PATH="$HOME/.local/bin:$PATH"; claude --model haiku -p '${escaped}'`];
-  } else {
-    cmd = "claude";
-    args = ["--model", "haiku", "-p", prompt];
-  }
-
+  const [cmd, args] = buildClaudeCliSpawn(prompt);
   showSpeech("음...", 30000);
   const child = spawn(cmd, args, { timeout: 60000, windowsHide: true });
   let out = "", err = "";
