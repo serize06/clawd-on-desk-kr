@@ -334,8 +334,26 @@ function pickDisplayHint(state, existing, incoming) {
 
 // ── Session management ──
 function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain, agentPid, agentId, host, headless, displayHint) {
-  // 에이전트별 활성화 확인 — Settings 패널에서 off된 에이전트는 이벤트 무시
   if (agentId && ctx.isAgentEnabled && !ctx.isAgentEnabled(agentId)) {
+    return;
+  }
+  // Headless 세션(Clawd 자신의 -p 호출 포함)은 조용히 기록만 하고 애니메이션 변경 안 함
+  if (headless) {
+    const existing = sessions.get(sessionId);
+    sessions.set(sessionId, {
+      state,
+      updatedAt: Date.now(),
+      displayHint: null,
+      sourcePid: sourcePid || (existing && existing.sourcePid) || null,
+      cwd: cwd || (existing && existing.cwd) || "",
+      editor: editor || (existing && existing.editor) || null,
+      pidChain: pidChain || (existing && existing.pidChain) || [],
+      agentPid: agentPid || (existing && existing.agentPid) || null,
+      agentId: agentId || (existing && existing.agentId) || "claude-code",
+      host: host || (existing && existing.host) || null,
+      headless: true,
+      pidReachable: false,
+    });
     return;
   }
 
