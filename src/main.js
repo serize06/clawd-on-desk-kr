@@ -1795,8 +1795,23 @@ function readLastExchange(file, agentId) {
       let obj; try { obj = JSON.parse(lines[i]); } catch { continue; }
 
       if (agentId === "codex") {
-        if (obj.type === "event_msg") {
-          const t = obj.text || (obj.payload && obj.payload.text) || "";
+        // Codex 포맷: {type:"response_item", payload:{type:"message", role, content:[{type:"input_text"|"output_text",text}]}}
+        if (obj.type === "response_item" && obj.payload && obj.payload.type === "message") {
+          const role = obj.payload.role;
+          const contentArr = Array.isArray(obj.payload.content) ? obj.payload.content : [];
+          const text = contentArr
+            .filter(c => c && (c.type === "input_text" || c.type === "output_text" || c.type === "text"))
+            .map(c => c.text || "")
+            .join("\n")
+            .trim();
+          if (!text) continue;
+          // 시스템 주입 메시지 스킵 (대량 프롬프트 들어있음)
+          if (text.startsWith("<") || text.length > 4000) continue;
+          if ((role === "user") && !lastUser) lastUser = text;
+          else if ((role === "assistant") && !lastAssistant) lastAssistant = text;
+        } else if (obj.type === "event_msg") {
+          // 오래된 포맷 호환
+          const t = obj.text || (obj.payload && obj.payload.text) || (obj.payload && obj.payload.message) || "";
           if (obj.subtype === "user_message" && t && !lastUser) lastUser = t;
           else if (obj.subtype === "agent_message" && t && !lastAssistant) lastAssistant = t;
         }
