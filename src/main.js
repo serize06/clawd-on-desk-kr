@@ -721,14 +721,25 @@ const _menuCtx = {
       let out = "", err = "";
       child.stdout.on("data", d => out += d.toString());
       child.stderr.on("data", d => err += d.toString());
-      child.on("close", (code) => { if (out.trim()) markClawdSessionInitialized();
-        const text = (out || "").trim().split("\n").filter(l => l.trim()).pop();
-        if (text) {
-          showSpeech(text.slice(0, 100), 6000);
-        } else {
-          const msg = err.trim().split("\n").pop() || `exit ${code}`;
-          showSpeech(`Claude 실패: ${msg.slice(0, 60)}`, 5000);
+      child.on("close", (code) => {
+        if (out.trim()) markClawdSessionInitialized();
+        // "already in use" 에러 → init 플래그 켜고 -r로 자동 재시도
+        if (err.includes("already in use") && !_clawdSessionInitialized) {
+          markClawdSessionInitialized();
+          const [cmd2, args2] = buildClaudeCliSpawn(prompt);
+          const retry = spawn(cmd2, args2, { timeout: 60000, windowsHide: true });
+          let out2 = "", err2 = "";
+          retry.stdout.on("data", d => out2 += d.toString());
+          retry.stderr.on("data", d => err2 += d.toString());
+          retry.on("close", () => {
+            const t = (out2 || "").trim().split("\n").filter(l => l.trim()).pop();
+            showSpeech(t ? t.slice(0, 100) : (err2.trim().slice(-60) || "음 잘 모르겠어"), 6000);
+          });
+          return;
         }
+        const text = (out || "").trim().split("\n").filter(l => l.trim()).pop();
+        if (text) showSpeech(text.slice(0, 100), 6000);
+        else showSpeech(`Claude 실패: ${(err.trim().split("\n").pop() || `exit ${code}`).slice(0, 60)}`, 5000);
       });
       child.on("error", (e) => showSpeech(`spawn 실패: ${e.message}`, 5000));
     };
