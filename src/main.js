@@ -676,6 +676,21 @@ const _menuCtx = {
   getStatsSummary: () => getStatsSummary(),
   speakRecentCommit: () => speakRecentCommit(),
   speakAboutConversation: () => speakAboutConversation(),
+  openSpeechLog: () => {
+    if (speechLogWin && !speechLogWin.isDestroyed()) { speechLogWin.focus(); return; }
+    const path = require("path");
+    speechLogWin = new BrowserWindow({
+      width: 520, height: 540,
+      title: "Clawd 말 기록",
+      alwaysOnTop: false,
+      webPreferences: {
+        preload: path.join(__dirname, "preload-speech-log.js"),
+        nodeIntegration: false, contextIsolation: true,
+      },
+    });
+    speechLogWin.loadFile(path.join(__dirname, "speech-log.html"));
+    speechLogWin.on("closed", () => { speechLogWin = null; });
+  },
   askClawd: () => {
     const path = require("path");
     const askWin = new BrowserWindow({
@@ -1174,8 +1189,24 @@ function createSpeechWindow() {
 
 function _bumpSpeechStat() { try { sessionStats.speeches++; } catch {} }
 
+// ── 말풍선 로그 ──
+const speechLog = [];  // {ts, text}[]
+const SPEECH_LOG_MAX = 300;
+let speechLogWin = null;
+
+function _broadcastSpeechLog() {
+  if (speechLogWin && !speechLogWin.isDestroyed()) {
+    try { speechLogWin.webContents.send("speech-log:changed"); } catch {}
+  }
+}
+ipcMain.handle("speech-log:get", () => speechLog.slice());
+ipcMain.on("speech-log:clear", () => { speechLog.length = 0; _broadcastSpeechLog(); });
+
 function showSpeech(text, durationMs = 3000) {
   _bumpSpeechStat();
+  speechLog.push({ ts: Date.now(), text });
+  if (speechLog.length > SPEECH_LOG_MAX) speechLog.shift();
+  _broadcastSpeechLog();
   if (!win || win.isDestroyed()) return;
   createSpeechWindow();
   const p = win.getBounds();

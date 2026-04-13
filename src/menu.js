@@ -147,6 +147,10 @@ module.exports = function initMenu(ctx) {
         click: () => ctx.speakAboutConversation && ctx.speakAboutConversation(),
       },
       {
+        label: "📜 말 기록 보기",
+        click: () => ctx.openSpeechLog && ctx.openSpeechLog(),
+      },
+      {
         label: "📝 커스텀 대사 추가",
         click: () => ctx.promptCustomPhrase && ctx.promptCustomPhrase(),
       },
@@ -542,6 +546,10 @@ module.exports = function initMenu(ctx) {
       {
         label: "💬 대화 평 듣기",
         click: () => ctx.speakAboutConversation && ctx.speakAboutConversation(),
+      },
+      {
+        label: "📜 말 기록 보기",
+        click: () => ctx.openSpeechLog && ctx.openSpeechLog(),
       },
       {
         label: "📝 커스텀 대사 추가",
