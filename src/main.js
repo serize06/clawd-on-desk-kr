@@ -1532,7 +1532,23 @@ function smartSpeak(context, fallback) {
   });
 }
 
-// 가장 최근에 수정된 CC 세션 JSONL 찾기
+// Clawd 자신이 발생시킨 headless 세션 ID 추적 (이 파일들은 제외)
+const _clawdOwnSessionIds = new Set();
+
+// Clawd가 CC 세션 Map에서 추적 중인 활성 non-headless 세션 ID 뽑기
+function getActiveUserSessionIds() {
+  const ids = new Set();
+  try {
+    for (const [sid, s] of _state.sessions) {
+      if (!s || s.headless) continue;
+      if (_clawdOwnSessionIds.has(sid)) continue;
+      ids.add(sid);
+    }
+  } catch {}
+  return ids;
+}
+
+// 최신 사용자 CC 세션 JSONL 찾기 (Clawd의 -p 호출 JSONL은 제외)
 function findLatestTranscript() {
   const fs = require("fs");
   const path = require("path");
@@ -1541,6 +1557,7 @@ function findLatestTranscript() {
     "\\\\wsl.localhost\\Ubuntu\\home\\serize\\.claude\\projects",
     path.join(os.homedir(), ".claude", "projects"),
   ];
+  const activeIds = getActiveUserSessionIds();
   let best = null;
   let bestTime = 0;
   for (const base of bases) {
@@ -1551,9 +1568,13 @@ function findLatestTranscript() {
         try { entries = fs.readdirSync(projDir); } catch { continue; }
         for (const entry of entries) {
           if (!entry.endsWith(".jsonl")) continue;
+          const sessionId = entry.replace(/\.jsonl$/, "");
+          // 활성 사용자 세션 목록이 있으면 그것만, 없으면 휴리스틱: 파일 크기 5KB 이상
+          if (activeIds.size > 0 && !activeIds.has(sessionId)) continue;
           const full = path.join(projDir, entry);
           try {
             const st = fs.statSync(full);
+            if (activeIds.size === 0 && st.size < 5000) continue; // 헤드리스 -p 짧은 파일 제외
             if (st.mtimeMs > bestTime) { bestTime = st.mtimeMs; best = full; }
           } catch {}
         }
