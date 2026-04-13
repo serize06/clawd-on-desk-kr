@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld("hitAPI", {
   startDragReaction: () => ipcRenderer.send("start-drag-reaction"),
   endDragReaction: () => ipcRenderer.send("end-drag-reaction"),
   playClickReaction: (svg, duration) => ipcRenderer.send("play-click-reaction", svg, duration),
+  shakeDetected: () => ipcRenderer.send("shake-detected"),
   // State sync ← main
   onStateSync: (cb) => ipcRenderer.on("hit-state-sync", (_, data) => cb(data)),
   onCancelReaction: (cb) => ipcRenderer.on("hit-cancel-reaction", () => cb()),

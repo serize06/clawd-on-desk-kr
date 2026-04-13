@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    background: transparent;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", Roboto, sans-serif;
+    user-select: none;
+  }
+  #bubble {
+    position: relative;
+    display: inline-block;
+    max-width: 220px;
+    padding: 10px 14px;
+    background: #ffffff;
+    color: #18181b;
+    border: 1px solid rgba(0,0,0,0.15);
+    border-radius: 14px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.3;
+    white-space: normal;
+    word-break: break-word;
+    animation: pop 0.2s ease-out;
+  }
+  #bubble::after {
+    content: "";
+    position: absolute;
+    bottom: -8px;
+    left: 28px;
+    width: 0; height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-top: 8px solid #ffffff;
+    filter: drop-shadow(0 1px 0 rgba(0,0,0,0.12));
+  }
+  @media (prefers-color-scheme: dark) {
+    #bubble { background: #27272a; color: #f4f4f5; border-color: rgba(255,255,255,0.12); }
+    #bubble::after { border-top-color: #27272a; }
+  }
+  @keyframes pop {
+    from { transform: scale(0.7) translateY(8px); opacity: 0; }
+    to { transform: scale(1) translateY(0); opacity: 1; }
+  }
+  #bubble.fade-out { animation: fade 0.3s ease-in forwards; }
+  @keyframes fade {
+    to { transform: scale(0.8); opacity: 0; }
+  }
+</style>
+</head>
+<body>
+  <div style="padding:10px;">
+    <div id="bubble">Hello!</div>
+  </div>
+  <script>
+    const { ipcRenderer } = require('electron');
+    const bubble = document.getElementById('bubble');
+    ipcRenderer.on('speech-set', (_, text) => {
+      bubble.classList.remove('fade-out');
+      bubble.textContent = text;
+      // Report measured height back to main for window sizing
+      requestAnimationFrame(() => {
+        const r = document.body.getBoundingClientRect();
+        ipcRenderer.send('speech-size', { w: Math.ceil(r.width) + 20, h: Math.ceil(r.height) + 20 });
+      });
+    });
+    ipcRenderer.on('speech-hide', () => {
+      bubble.classList.add('fade-out');
+    });
+  </script>
+</body>
+</html>

@@ -99,6 +99,38 @@ module.exports = function initMenu(ctx) {
         label: ctx.doNotDisturb ? t("wake") : t("sleep"),
         click: () => ctx.doNotDisturb ? ctx.disableDoNotDisturb() : ctx.enableDoNotDisturb(),
       },
+      {
+        label: "💬 Say hi!",
+        click: () => ctx.showSpeech && ctx.showSpeech("안녕!", 3000),
+      },
+      {
+        label: "🌍 중력",
+        type: "checkbox",
+        checked: !!ctx.gravityEnabled,
+        click: (item) => { ctx.gravityEnabled = item.checked; },
+      },
+      {
+        label: "🚶 자유롭게 걷기",
+        type: "checkbox",
+        checked: !!ctx.walkEnabled,
+        click: (item) => { ctx.walkEnabled = item.checked; },
+      },
+      {
+        label: "🎯 커서 따라가기",
+        type: "checkbox",
+        checked: !!ctx.followCursorEnabled,
+        click: (item) => { ctx.followCursorEnabled = item.checked; },
+      },
+      {
+        label: "⏲ 포모도로",
+        submenu: [
+          { label: "▶ 25분 시작", click: () => ctx.startPomodoro && ctx.startPomodoro(25) },
+          { label: "▶ 15분 시작", click: () => ctx.startPomodoro && ctx.startPomodoro(15) },
+          { label: "▶ 50분 시작", click: () => ctx.startPomodoro && ctx.startPomodoro(50) },
+          { type: "separator" },
+          { label: "⏹ 취소", click: () => ctx.cancelPomodoro && ctx.cancelPomodoro() },
+        ],
+      },
       // The setters route through ctx.settings.applyUpdate(); main.js's
       // settings subscriber handles reposition / menu rebuild / persist.
       {
@@ -184,6 +216,7 @@ module.exports = function initMenu(ctx) {
         submenu: [
           { label: "English", type: "radio", checked: ctx.lang === "en", click: () => { ctx.lang = "en"; } },
           { label: "中文", type: "radio", checked: ctx.lang === "zh", click: () => { ctx.lang = "zh"; } },
+          { label: "한국어", type: "radio", checked: ctx.lang === "ko", click: () => { ctx.lang = "ko"; } },
         ],
       },
       { type: "separator" },
@@ -196,6 +229,7 @@ module.exports = function initMenu(ctx) {
         enabled: false,
       },
       { type: "separator" },
+      { label: "🔄 Restart", click: () => requestAppRestart() },
       { label: t("quit"), click: () => requestAppQuit() },
     );
     ctx.tray.setContextMenu(Menu.buildFromTemplate(items));
@@ -209,6 +243,12 @@ module.exports = function initMenu(ctx) {
   function requestAppQuit() {
     ctx.isQuitting = true;
     app.quit();
+  }
+
+  function requestAppRestart() {
+    app.relaunch();
+    ctx.isQuitting = true;
+    app.exit(0);
   }
 
   function ensureContextMenuOwner() {
@@ -419,6 +459,66 @@ module.exports = function initMenu(ctx) {
         label: ctx.doNotDisturb ? t("wake") : t("sleep"),
         click: () => ctx.doNotDisturb ? ctx.disableDoNotDisturb() : ctx.enableDoNotDisturb(),
       },
+      {
+        label: "💬 Say hi!",
+        click: () => ctx.showSpeech && ctx.showSpeech("안녕!", 3000),
+      },
+      {
+        label: "🌍 중력",
+        type: "checkbox",
+        checked: !!ctx.gravityEnabled,
+        click: (item) => { ctx.gravityEnabled = item.checked; },
+      },
+      {
+        label: "🚶 자유롭게 걷기",
+        type: "checkbox",
+        checked: !!ctx.walkEnabled,
+        click: (item) => { ctx.walkEnabled = item.checked; },
+      },
+      {
+        label: "🎯 커서 따라가기",
+        type: "checkbox",
+        checked: !!ctx.followCursorEnabled,
+        click: (item) => { ctx.followCursorEnabled = item.checked; },
+      },
+      {
+        label: "⏲ 포모도로",
+        submenu: [
+          { label: "▶ 25분 시작", click: () => ctx.startPomodoro && ctx.startPomodoro(25) },
+          { label: "▶ 15분 시작", click: () => ctx.startPomodoro && ctx.startPomodoro(15) },
+          { label: "▶ 50분 시작", click: () => ctx.startPomodoro && ctx.startPomodoro(50) },
+          { type: "separator" },
+          { label: "⏹ 취소", click: () => ctx.cancelPomodoro && ctx.cancelPomodoro() },
+        ],
+      },
+      { type: "separator" },
+      {
+        label: "🎭 동작",
+        submenu: [
+          { label: "💤 기본 (idle)", click: () => ctx.triggerState("idle") },
+          { label: "🤔 생각 (thinking)", click: () => ctx.triggerState("thinking") },
+          { label: "⌨️ 타이핑 (typing)", click: () => ctx.triggerState("typing") },
+          { label: "🔨 빌드 (building)", click: () => ctx.triggerState("building") },
+          { label: "🤹 저글링 (juggling)", click: () => ctx.triggerState("juggling") },
+          { label: "🎼 지휘 (conducting)", click: () => ctx.triggerState("conducting") },
+          { label: "🎉 기쁨 (happy)", click: () => ctx.triggerState("happy") },
+          { label: "❌ 에러 (error)", click: () => ctx.triggerState("error") },
+          { label: "🔔 알림 (notification)", click: () => ctx.triggerState("notification") },
+          { label: "🧹 청소 (sweeping)", click: () => ctx.triggerState("sweeping") },
+          { label: "📦 운반 (carrying)", click: () => ctx.triggerState("carrying") },
+          { label: "😴 수면 (sleeping)", click: () => ctx.triggerState("sleeping") },
+          { type: "separator" },
+          { label: "🚶 걷기 (walking)", click: () => ctx.triggerState("walking") },
+          { label: "😵 어지러움 (dizzy)", click: () => ctx.triggerState("dizzy") },
+          { label: "🔌 연결끊김 (disconnected)", click: () => ctx.triggerState("disconnected") },
+          { label: "🏃 떠남 (going-away)", click: () => ctx.triggerState("going-away") },
+          { label: "📡 비콘 (beacon)", click: () => ctx.triggerState("beacon") },
+          { label: "😕 혼란 (confused)", click: () => ctx.triggerState("confused") },
+          { label: "🥵 과열 (overheated)", click: () => ctx.triggerState("overheated") },
+          { label: "💪 미는중 (pushing)", click: () => ctx.triggerState("pushing") },
+          { label: "🧙 마법사 (wizard)", click: () => ctx.triggerState("wizard") },
+        ],
+      },
       { type: "separator" },
       {
         label: `${t("sessions")} (${ctx.sessions.size})`,
@@ -462,6 +562,7 @@ module.exports = function initMenu(ctx) {
         enabled: false,
       },
       { type: "separator" },
+      { label: "🔄 Restart", click: () => requestAppRestart() },
       { label: t("quit"), click: () => requestAppQuit() },
     );
     ctx.contextMenu = Menu.buildFromTemplate(template);

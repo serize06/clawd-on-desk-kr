@@ -448,6 +448,14 @@ function reapplyMacVisibility() {
 
 // ── State machine — delegated to src/state.js ──
 const _stateCtx = {
+  isAgentEnabled: (agentId) => {
+    try {
+      const s = _settingsController.getSnapshot();
+      if (!s || !s.agents) return true;
+      const entry = s.agents[agentId];
+      return entry ? entry.enabled !== false : true;
+    } catch { return true; }
+  },
   get theme() { return activeTheme; },
   get win() { return win; },
   get hitWin() { return hitWin; },
@@ -544,6 +552,14 @@ const { initFocusHelper, killFocusHelper, focusTerminalWindow, clearMacFocusCool
 
 // ── HTTP server — delegated to src/server.js ──
 const _serverCtx = {
+  isAgentEnabled: (agentId) => {
+    try {
+      const s = _settingsController.getSnapshot();
+      if (!s || !s.agents) return true;
+      const e = s.agents[agentId];
+      return e ? e.enabled !== false : true;
+    } catch { return true; }
+  },
   get autoStartWithClaude() { return autoStartWithClaude; },
   get doNotDisturb() { return doNotDisturb; },
   get hideBubbles() { return hideBubbles; },
@@ -648,6 +664,42 @@ function updateLog(msg) {
 const _menuCtx = {
   get win() { return win; },
   get sessions() { return sessions; },
+  showSpeech: (text, ms) => showSpeech(text, ms),
+  get gravityEnabled() { return gravityEnabled; },
+  set gravityEnabled(v) { gravityEnabled = !!v; if (!v && gravityTimer) { clearInterval(gravityTimer); gravityTimer = null; } },
+  get followCursorEnabled() { return followCursorEnabled; },
+  set followCursorEnabled(v) { followCursorEnabled = !!v; },
+  startPomodoro: (min) => startPomodoro(min),
+  cancelPomodoro: () => cancelPomodoro(),
+  get walkEnabled() { return walkEnabled; },
+  set walkEnabled(v) {
+    walkEnabled = !!v;
+    if (!walkEnabled && walking) {
+      try { setState("idle"); } catch {}
+      try { win.webContents.send("set-facing", "left"); } catch {}
+      walking = false;
+    }
+  },
+  triggerState: (state) => {
+    // 테마 state → (실제 state, svgOverride)
+    const ALIAS = {
+      happy:       ["attention",  "clawd-happy.svg"],
+      typing:      ["working",    "clawd-working-typing.svg"],
+      building:    ["working",    "clawd-working-building.svg"],
+      conducting:  ["juggling",   "clawd-working-conducting.svg"],
+      walking:     ["working",    "clawd-crab-walking.svg"],
+      dizzy:       ["error",      "clawd-dizzy.svg"],
+      disconnected:["error",      "clawd-disconnected.svg"],
+      "going-away":["error",      "clawd-going-away.svg"],
+      beacon:      ["working",    "clawd-working-beacon.svg"],
+      confused:    ["thinking",   "clawd-working-confused.svg"],
+      overheated:  ["error",      "clawd-working-overheated.svg"],
+      pushing:     ["working",    "clawd-working-pushing.svg"],
+      wizard:      ["working",    "clawd-working-wizard.svg"],
+    };
+    const [realState, svg] = ALIAS[state] || [state, null];
+    try { setState(realState, svg); } catch (e) { console.error("triggerState:", e); }
+  },
   get currentSize() { return currentSize; },
   set currentSize(v) { _settingsController.applyUpdate("size", v); },
   get doNotDisturb() { return doNotDisturb; },
@@ -763,6 +815,30 @@ function wireSettingsSubscribers() {
     if ("showSessionId" in changes) showSessionId = changes.showSessionId;
     if ("soundMuted" in changes) soundMuted = changes.soundMuted;
 
+    // 테마 변경: 실제 로드 + 윈도우 갱신
+    if ("theme" in changes) {
+      try {
+        if (themeLoader.loadTheme) {
+          activeTheme = themeLoader.loadTheme(changes.theme);
+          if (_state.refreshTheme) _state.refreshTheme();
+          if (typeof buildContextMenu === "function") buildContextMenu();
+          // hit 윈도우로 새 테마 설정 푸시
+          if (hitWin && !hitWin.isDestroyed()) {
+            sendToHitWin("theme-config", themeLoader.getHitRendererConfig());
+          }
+          // 렌더러로 새 테마 설정 + 현재 SVG 새로고침
+          if (win && !win.isDestroyed()) {
+            win.webContents.send("theme-config", themeLoader.getRendererConfig ? themeLoader.getRendererConfig() : {});
+            // 현재 state를 새 테마의 SVG로 재적용
+            const cs = _state.getCurrentState();
+            _state.applyState(cs, _state.getSvgOverride(cs));
+          }
+        }
+      } catch (err) {
+        console.warn("Clawd: theme reload failed:", err && err.message);
+      }
+    }
+
     // 2. Reactive side effects (mirror what the legacy setters / click handlers used to do).
     if ("hideBubbles" in changes) {
       try { syncPermissionShortcuts(); } catch (err) {
@@ -815,6 +891,22 @@ ipcMain.handle("settings:command", async (_event, payload) => {
     return { status: "error", message: "settings:command payload must be { action, payload }" };
   }
   return _settingsController.applyCommand(payload.action, payload.payload);
+});
+ipcMain.handle("settings:list-themes", () => {
+  try {
+    return themeLoader.discoverThemes().map(t => ({
+      id: t.id, name: t.name, builtin: !!t.builtin,
+    }));
+  } catch (e) {
+    return [];
+  }
+});
+ipcMain.on("settings:open-theme-dir", () => {
+  try {
+    const { shell } = require("electron");
+    const dir = themeLoader.ensureUserThemesDir && themeLoader.ensureUserThemesDir();
+    if (dir) shell.openPath(dir);
+  } catch {}
 });
 
 // ── Auto-updater — delegated to src/updater.js ──
@@ -898,6 +990,324 @@ function openSettingsWindow() {
   });
   settingsWindow.on("closed", () => {
     settingsWindow = null;
+  });
+}
+
+// ── 말풍선 (speech bubble) ──
+let speechWin = null;
+let speechHideTimer = null;
+const SPEECH_PHRASES = [
+  // 코딩 팁
+  "커밋 한 번 해두는 게 좋을 듯", "테스트는 돌렸어?", "타입 체크 통과?",
+  "린터는 봤고?", "force push 조심해", "prod에서 --force 위험해",
+  "rm -rf 하기 전에 한 번 더 확인", "브랜치 좀 정리하자", "PR 설명 자세히 써줘",
+  "메모리 누수 없지?", "레이스 컨디션 주의", "데드락 조심",
+  "에러 핸들링 다 했어?", "캐시 무효화 체크", "환경변수 맞아?",
+  "롤백 플랜은 있고?", "커피 한 잔 할까", "쉬엄쉬엄 가자",
+  // 해킹/보안 농담
+  "sudo make me a sandwich", "; DROP TABLE users; --", "rm -rf / --no-preserve-root 금지",
+  "0day 제보 받습니다", "buffer 크기 체크했어?", "CVE 하나 주세요",
+  "/etc/shadow 왜 보려고", "패스워드 'password' 쓰면 안됨", "2FA 켜",
+  "XSS는 escape부터", "SQL 인젝션 주의", "CSRF 토큰 있지?",
+  "nmap 로컬에만", "와이파이 비번 hunter2", "가상머신에서 돌려",
+  "shellshock 기억해?", "heartbleed 아직도 있대", "log4j 업데이트 됐어?",
+  "세션 쿠키 HttpOnly", "JWT 시크릿 깃허브에 올리지마", "Bearer 토큰 유출 주의",
+  "루트킷 심은 거 아니지?", "리버스쉘 금지", "스니핑 당하지 마",
+  "netstat -tulpn 해봐", "pcap 분석 중", "방화벽 규칙 확인",
+  "chmod 777 금지", "TLS 1.3 써", "SHA-256 이상으로",
+];
+
+function createSpeechWindow() {
+  if (speechWin && !speechWin.isDestroyed()) return speechWin;
+  const path = require("path");
+  speechWin = new BrowserWindow({
+    width: 250, height: 70,
+    frame: false, transparent: true, resizable: false,
+    alwaysOnTop: true, skipTaskbar: true,
+    focusable: false, show: false,
+    webPreferences: { nodeIntegration: true, contextIsolation: false },
+  });
+  speechWin.setIgnoreMouseEvents(true);
+  speechWin.loadFile(path.join(__dirname, "speech.html"));
+  speechWin.on("closed", () => { speechWin = null; });
+  ipcMain.on("speech-size", (_, { w, h }) => {
+    if (!speechWin || speechWin.isDestroyed()) return;
+    const b = speechWin.getBounds();
+    speechWin.setBounds({ x: b.x, y: b.y, width: w, height: h });
+  });
+  return speechWin;
+}
+
+function showSpeech(text, durationMs = 3000) {
+  if (!win || win.isDestroyed()) return;
+  createSpeechWindow();
+  const p = win.getBounds();
+  // 말풍선 꼬리 tip(왼쪽에서 ~36px)이 Clawd 머리 중앙을 가리키도록
+  const bw = 260, bh = 80;
+  const targetX = p.x + Math.round(p.width / 2);  // Clawd 가로 중앙
+  const bx = targetX - 36;  // tail 위치(왼쪽 28px + 꼬리 반폭 8)
+  const by = Math.max(p.y + Math.round(p.height * 0.35) - bh, 0);  // Clawd 머리 근처
+  speechWin.setBounds({ x: bx, y: by, width: bw, height: bh });
+  speechWin.showInactive();
+  speechWin.webContents.send("speech-set", text);
+  if (speechHideTimer) clearTimeout(speechHideTimer);
+  speechHideTimer = setTimeout(() => {
+    if (speechWin && !speechWin.isDestroyed()) {
+      speechWin.webContents.send("speech-hide");
+      setTimeout(() => {
+        if (speechWin && !speechWin.isDestroyed()) speechWin.hide();
+      }, 350);
+    }
+  }, durationMs);
+}
+
+// ── 중력 낙하 ──
+let gravityTimer = null;
+let gravityVY = 0;
+let shakeDizzyUntil = 0;
+let gravityEnabled = false;
+
+function startGravityFall() {
+  if (!gravityEnabled) return;
+  if (!win || win.isDestroyed()) return;
+  if (gravityTimer) clearInterval(gravityTimer);
+  gravityVY = 0;
+  const bounds = win.getBounds();
+  const display = screen.getDisplayMatching(bounds);
+  const floorY = display.workArea.y + display.workArea.height - bounds.height - 8;
+  if (bounds.y >= floorY) return;  // 이미 바닥에 있음
+  gravityTimer = setInterval(() => {
+    if (!win || win.isDestroyed()) { clearInterval(gravityTimer); gravityTimer = null; return; }
+    const b = win.getBounds();
+    gravityVY += 1.8;
+    let newY = Math.round(b.y + gravityVY);
+    if (newY >= floorY) {
+      newY = floorY;
+      win.setBounds({ ...b, y: newY });
+      clearInterval(gravityTimer); gravityTimer = null;
+      // 어지러운 상태 계속이면 ERROR 유지, 아니면 IDLE
+      if (Date.now() < shakeDizzyUntil) {
+        // 이미 error 애니메이션 표시중
+      } else {
+        try { setState("idle"); } catch (e) {}
+      }
+      if (typeof showSpeech === "function") showSpeech("아야…", 1500);
+      syncHitWin();
+      return;
+    }
+    win.setBounds({ ...b, y: newY });
+    syncHitWin();
+  }, 16);
+}
+
+// ── 포모도로 타이머 ──
+let pomodoroEndsAt = 0;
+let pomodoroTimer = null;
+
+function startPomodoro(minutes = 25) {
+  if (pomodoroTimer) clearTimeout(pomodoroTimer);
+  pomodoroEndsAt = Date.now() + minutes * 60 * 1000;
+  try { setState("working", "clawd-working-typing.svg"); } catch {}
+  showSpeech(`${minutes}분 집중 시작`, 3000);
+  pomodoroTimer = setTimeout(() => {
+    pomodoroTimer = null;
+    pomodoroEndsAt = 0;
+    try { setState("attention", "clawd-happy.svg"); } catch {}
+    showSpeech("끝! 휴식 시간~", 5000);
+    try {
+      if (win) win.webContents.send("play-sound", "complete");
+    } catch {}
+  }, minutes * 60 * 1000);
+}
+
+function cancelPomodoro() {
+  if (pomodoroTimer) { clearTimeout(pomodoroTimer); pomodoroTimer = null; }
+  pomodoroEndsAt = 0;
+  try { setState("idle"); } catch {}
+  showSpeech("타이머 취소", 2000);
+}
+
+// 포모도로 남은 시간 주기 체크 (5분/1분 남았을 때 알림)
+let pomodoroLastNotifyMin = -1;
+setInterval(() => {
+  if (!pomodoroEndsAt) { pomodoroLastNotifyMin = -1; return; }
+  const remainMin = Math.max(0, Math.ceil((pomodoroEndsAt - Date.now()) / 60000));
+  if (remainMin === 5 && pomodoroLastNotifyMin !== 5) {
+    pomodoroLastNotifyMin = 5;
+    showSpeech("5분 남았어", 3000);
+  } else if (remainMin === 1 && pomodoroLastNotifyMin !== 1) {
+    pomodoroLastNotifyMin = 1;
+    showSpeech("1분 남았어!", 3000);
+  }
+}, 20000);
+
+// ── 더블클릭 쓰다듬기 반응 ──
+ipcMain.on("pet-double-click", () => {
+  try { setState("attention", "clawd-happy.svg"); } catch {}
+  const phrases = ["헤헤", "좋아", "고마워", "💕", "ㅎㅎ"];
+  showSpeech(phrases[Math.floor(Math.random() * phrases.length)], 2000);
+});
+
+// ── 커서 따라가기 ──
+let followCursorEnabled = false;
+
+setInterval(() => {
+  if (!followCursorEnabled) return;
+  if (!win || win.isDestroyed()) return;
+  if (dragLocked || gravityTimer) return;
+  if (shakeDizzyUntil > Date.now()) return;
+
+  const cursor = screen.getCursorScreenPoint();
+  const b = win.getBounds();
+  const cx = b.x + b.width / 2;
+  const cy = b.y + b.height / 2;
+  const dx = cursor.x - cx;
+  const dy = cursor.y - cy;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 100) return;  // 이미 가까우면 정지
+
+  const speed = 3;
+  const nx = Math.round(b.x + (dx / dist) * speed);
+  const ny = Math.round(b.y + (dy / dist) * speed);
+  const display = screen.getDisplayMatching(b);
+  const wa = display.workArea;
+  const clampedX = Math.max(wa.x, Math.min(wa.x + wa.width - b.width, nx));
+  const clampedY = Math.max(wa.y, Math.min(wa.y + wa.height - b.height, ny));
+  win.setBounds({ ...b, x: clampedX, y: clampedY });
+  syncHitWin();
+  // 따라가는 중엔 walking 애니 + facing
+  try { setState("working", "clawd-crab-walking.svg"); } catch {}
+  try { win.webContents.send("set-facing", dx > 0 ? "right" : "left"); } catch {}
+}, 40);
+
+// ── 클로드 이벤트 기반 말풍선 ──
+const EVENT_SPEECHES = {
+  thinking: ["생각 중", "잠깐만", "음...", "컨텍스트 보는 중"],
+  working: ["작업 중", "처리하고 있어", "진행 중"],
+  error: ["어 에러났네", "뭐지 이거", "스택트레이스 봐봐", "로그 확인해봐"],
+  attention: ["다 됐어", "완료", "끝났어"],
+  notification: ["확인해줘", "잠깐 봐봐"],
+  sweeping: ["정리 중", "컨텍스트 비우는 중"],
+  juggling: ["여러 개 동시에 중", "좀 바빠"],
+  carrying: ["옮기는 중", "가져가는 중"],
+};
+
+function speakForState(state) {
+  const list = EVENT_SPEECHES[state];
+  if (!list) return;
+  if (Math.random() > 0.5) return;
+  const phrase = list[Math.floor(Math.random() * list.length)];
+  showSpeech(phrase, 2500);
+}
+
+// 상태 전환 감지 → 이벤트 말풍선
+let _lastStateForSpeech = "idle";
+setInterval(() => {
+  try {
+    const cur = _state.getCurrentState();
+    if (cur && cur !== _lastStateForSpeech) {
+      speakForState(cur);
+      _lastStateForSpeech = cur;
+    }
+  } catch {}
+}, 500);
+
+// ── 자유 걷기 ──
+let walkEnabled = false;
+let walkMode = "stop";  // "left" | "right" | "stop"
+let walkNextChange = Date.now();
+
+function pickWalkMode() {
+  const r = Math.random();
+  if (r < 0.35) return "left";
+  if (r < 0.7) return "right";
+  return "stop";
+}
+
+let walking = false;
+
+setInterval(() => {
+  if (!walkEnabled) return;
+  if (!win || win.isDestroyed()) return;
+  if (dragLocked) return;
+  if (gravityTimer) return;
+  if (shakeDizzyUntil > Date.now()) return;
+  // 다른 동작(thinking/typing/building 등) 중이면 걷기 멈춤
+  // walking이 true면 우리가 working 상태를 걷기용으로 쓰고 있음 → 계속 진행
+  const cs = _state.getCurrentState();
+  const cSvg = _state.getCurrentSvg();
+  if (cs !== "idle" && !(walking && cSvg === "clawd-crab-walking.svg")) {
+    walking = false;
+    return;
+  }
+
+  const now = Date.now();
+  if (now > walkNextChange) {
+    walkMode = pickWalkMode();
+    // 짧게: 1~2.5초, 길게: 2.5~5초 섞어서
+    walkNextChange = now + 1000 + Math.random() * 4000;
+  }
+
+  const b = win.getBounds();
+  const display = screen.getDisplayMatching(b);
+  const wa = display.workArea;
+  const speed = 2;
+  let walkDirection = 0;
+  if (walkMode === "left") walkDirection = -1;
+  else if (walkMode === "right") walkDirection = 1;
+  let nx = b.x + speed * walkDirection;
+
+  if (nx <= wa.x) { nx = wa.x; walkMode = "right"; }
+  else if (nx + b.width >= wa.x + wa.width) {
+    nx = wa.x + wa.width - b.width;
+    walkMode = "left";
+  }
+
+  if (nx !== b.x) {
+    win.setBounds({ ...b, x: nx });
+    syncHitWin();
+    if (!walking) {
+      try { setState("working", "clawd-crab-walking.svg"); walking = true; } catch {}
+    }
+    // 방향에 따라 스프라이트 좌우 반전
+    try { win.webContents.send("set-facing", walkDirection > 0 ? "right" : "left"); } catch {}
+  } else {
+    if (walking) {
+      try { setState("idle"); } catch {}
+      try { win.webContents.send("set-facing", "left"); } catch {}
+      walking = false;
+    }
+  }
+}, 50);
+
+// 어지러움 해제 체크
+setInterval(() => {
+  if (shakeDizzyUntil > 0 && Date.now() > shakeDizzyUntil) {
+    shakeDizzyUntil = 0;
+    try { setState("idle"); } catch (e) {}
+  }
+}, 500);
+
+// 주기적으로 랜덤 대사
+setInterval(() => {
+  if (!win || win.isDestroyed() || !win.isVisible()) return;
+  if (Math.random() < 0.4) {
+    const phrase = SPEECH_PHRASES[Math.floor(Math.random() * SPEECH_PHRASES.length)];
+    showSpeech(phrase, 3500);
+  }
+}, 20000);
+
+// Clawd 창 이동 시 말풍선 따라가기
+function syncSpeechPosition() {
+  if (!speechWin || speechWin.isDestroyed() || !speechWin.isVisible()) return;
+  if (!win || win.isDestroyed()) return;
+  const p = win.getBounds();
+  const b = speechWin.getBounds();
+  const targetX = p.x + Math.round(p.width / 2);
+  speechWin.setBounds({
+    x: targetX - 36,
+    y: Math.max(p.y + Math.round(p.height * 0.35) - b.height, 0),
+    width: b.width, height: b.height,
   });
 }
 
@@ -1060,6 +1470,7 @@ function createWindow() {
       syncHitWin();
       if (bubbleFollowPet) repositionFloatingBubbles();
       else repositionUpdateBubble();
+      syncSpeechPosition();
     };
     win.on("move", syncFloatingWindows);
     win.on("resize", syncFloatingWindows);
@@ -1115,8 +1526,6 @@ function createWindow() {
   ipcMain.on("drag-end", () => {
     if (!_mini.getMiniMode() && !_mini.getMiniTransitioning()) {
       checkMiniModeSnap();
-      // After drag, clamp to the nearest screen (loose clamp during drag allows cross-screen).
-      // In proportional mode, also recalculate size for the landing display.
       if (win && !win.isDestroyed()) {
         const size = getCurrentPixelSize();
         const { x, y } = win.getBounds();
@@ -1124,8 +1533,20 @@ function createWindow() {
         win.setBounds({ ...clamped, width: size.width, height: size.height });
         syncHitWin();
         repositionUpdateBubble();
+        // 중력 낙하: 놓으면 바닥으로 떨어짐
+        startGravityFall();
       }
     }
+  });
+
+  // 흔들기 감지 → 어지러움 애니메이션
+  ipcMain.on("shake-detected", () => {
+    if (shakeDizzyUntil < Date.now()) {
+      // showSpeech 쓰려면 ctx 필요하지만 간단히 직접 호출
+      if (typeof showSpeech === "function") showSpeech("어지러워!", 1500);
+    }
+    shakeDizzyUntil = Date.now() + 2500;
+    try { setState("error", "clawd-dizzy.svg"); } catch (e) {}
   });
 
   ipcMain.on("exit-mini-mode", () => {

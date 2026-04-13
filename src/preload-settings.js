@@ -28,6 +28,8 @@ ipcRenderer.on("settings-changed", (_event, payload) => {
 contextBridge.exposeInMainWorld("settingsAPI", {
   getSnapshot: () => ipcRenderer.invoke("settings:get-snapshot"),
   update: (key, value) => ipcRenderer.invoke("settings:update", { key, value }),
+  listThemes: () => ipcRenderer.invoke("settings:list-themes"),
+  openThemeDir: () => ipcRenderer.send("settings:open-theme-dir"),
   onChanged: (cb) => {
     if (typeof cb === "function") listeners.add(cb);
   },

@@ -70,9 +70,16 @@ area.addEventListener("pointerdown", (e) => {
   }
 });
 
+// --- 흔들기 감지 ---
+const SHAKE_WINDOW_MS = 600;
+const SHAKE_MIN_REVERSALS = 3;
+let shakeHistory = [];  // {t, dx}
+let lastShakeReport = 0;
+
 document.addEventListener("pointermove", (e) => {
   if (isDragging) {
-    pendingDx += e.screenX - lastScreenX;
+    const dxStep = e.screenX - lastScreenX;
+    pendingDx += dxStep;
     pendingDy += e.screenY - lastScreenY;
     lastScreenX = e.screenX;
     lastScreenY = e.screenY;
@@ -83,6 +90,25 @@ document.addEventListener("pointermove", (e) => {
       if (Math.abs(totalDx) > DRAG_THRESHOLD || Math.abs(totalDy) > DRAG_THRESHOLD) {
         didDrag = true;
         startDragReaction();
+      }
+    }
+
+    // 흔들기 감지
+    const now = Date.now();
+    shakeHistory.push({ t: now, dx: dxStep });
+    shakeHistory = shakeHistory.filter(s => now - s.t < SHAKE_WINDOW_MS);
+    if (shakeHistory.length >= 5 && now - lastShakeReport > 500) {
+      let reversals = 0;
+      let prevSign = 0;
+      for (const s of shakeHistory) {
+        if (Math.abs(s.dx) < 3) continue;
+        const sign = s.dx > 0 ? 1 : -1;
+        if (prevSign && prevSign !== sign) reversals++;
+        prevSign = sign;
+      }
+      if (reversals >= SHAKE_MIN_REVERSALS) {
+        lastShakeReport = now;
+        window.hitAPI.shakeDetected();
       }
     }
 

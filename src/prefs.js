@@ -47,7 +47,7 @@ const SCHEMA = {
   preMiniX: { type: "number", default: 0, validate: (v) => Number.isFinite(v) },
   preMiniY: { type: "number", default: 0, validate: (v) => Number.isFinite(v) },
   // Pure data prefs
-  lang: { type: "string", default: "en", enum: ["en", "zh"] },
+  lang: { type: "string", default: "en", enum: ["en", "zh", "ko"] },
   showTray: { type: "boolean", default: true },
   showDock: { type: "boolean", default: true },
   autoStartWithClaude: { type: "boolean", default: false },
@@ -74,6 +74,9 @@ const SCHEMA = {
       "cursor-agent": { enabled: true },
       "gemini-cli": { enabled: true },
       "opencode": { enabled: true },
+      "vscode-agent": { enabled: true },
+      "kiro-cli": { enabled: true },
+      "codebuddy": { enabled: true },
     }),
     normalize: normalizeAgents,
   },

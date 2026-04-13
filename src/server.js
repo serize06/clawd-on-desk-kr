@@ -229,6 +229,12 @@ function startHttpServer() {
         }
       });
     } else if (req.method === "POST" && req.url === "/permission") {
+      // 에이전트 비활성화 상태면 권한 요청도 무시
+      if (ctx.isAgentEnabled && !ctx.isAgentEnabled("claude-code")) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "allow" } } }));
+        return;
+      }
       ctx.permLog(`/permission hit | DND=${ctx.doNotDisturb} pending=${ctx.pendingPermissions.length}`);
       let body = "";
       let bodySize = 0;

@@ -334,6 +334,11 @@ function pickDisplayHint(state, existing, incoming) {
 
 // ── Session management ──
 function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain, agentPid, agentId, host, headless, displayHint) {
+  // 에이전트별 활성화 확인 — Settings 패널에서 off된 에이전트는 이벤트 무시
+  if (agentId && ctx.isAgentEnabled && !ctx.isAgentEnabled(agentId)) {
+    return;
+  }
+
   if (startupRecoveryActive) {
     startupRecoveryActive = false;
     if (startupRecoveryTimer) { clearTimeout(startupRecoveryTimer); startupRecoveryTimer = null; }

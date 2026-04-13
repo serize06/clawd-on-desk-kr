@@ -132,13 +132,32 @@ let _objectScaleCSS;
 let _fileScales = {};
 let _fileOffsets = {};
 let _transitions = {};  // per-file fade config: { "file.apng": { in: 400, out: 400 } }
-let _miniFlipAssets = false; // theme's mini assets drawn in reverse direction
+let _miniFlipAssets = false;
 let _inMiniMode = false;
+let _walkFacing = "left";  // 걷기 방향 ("left" | "right")
+
+function computeTransform() {
+  const miniFlip = _miniFlipAssets && _inMiniMode;
+  const walkFlip = _walkFacing === "right";
+  return (miniFlip !== walkFlip) ? "scaleX(-1)" : "";
+}
 
 function applyMiniFlip(el) {
-  if (!el || el.tagName !== "IMG") return;
-  el.style.transform = (_miniFlipAssets && _inMiniMode) ? "scaleX(-1)" : "";
+  if (!el) return;
+  // IMG / OBJECT 둘 다 적용
+  el.style.transform = computeTransform();
 }
+
+function applyFacingAll() {
+  const transform = computeTransform();
+  document.querySelectorAll("#pet-container > object, #pet-container > img.clawd-img")
+    .forEach(el => { el.style.transform = transform; });
+}
+
+window.electronAPI.onSetFacing((dir) => {
+  _walkFacing = dir === "right" ? "right" : "left";
+  applyFacingAll();
+});
 
 // ── Layered tracking state (multi-layer eye/head/body tracking) ──
 let _useLayeredTracking = false;

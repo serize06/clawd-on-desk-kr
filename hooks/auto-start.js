@@ -23,8 +23,21 @@ function launchApp() {
   const isPackaged = __dirname.includes("app.asar");
   const isWin = process.platform === "win32";
   const isMac = process.platform === "darwin";
+  // WSL 감지: Linux에서 /mnt/c 경로의 스크립트를 실행 중이면 Windows용 앱을 cmd.exe로 띄움
+  const isWSL = process.platform === "linux" && __dirname.startsWith("/mnt/");
 
   try {
+    if (isWSL) {
+      const projectDir = path.resolve(__dirname, "..");
+      // WSL → Windows cmd.exe로 npm start 실행, 별도 창 안 뜨게 start "" /B
+      spawn("cmd.exe", ["/c", "start", "", "/B", "npm.cmd", "start"], {
+        cwd: projectDir,
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      }).unref();
+      return;
+    }
     if (isPackaged) {
       if (isWin) {
         // __dirname: <install>/resources/app.asar.unpacked/hooks
