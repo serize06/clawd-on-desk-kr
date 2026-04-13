@@ -694,19 +694,34 @@ const _menuCtx = {
     });
     const onSubmit = (_e, q) => {
       askWin.close();
-      showSpeech("생각중…", 15000);
+      showSpeech("생각중…", 30000);
       const { spawn } = require("child_process");
       const prompt = `사용자 질문: "${q}"\n너는 Clawd라는 귀여운 게 마스코트야. 반말로 50자 이내 짧게 답해. 따옴표/줄바꿈 없이.`;
-      const cmd = process.platform === "win32" ? "wsl" : "claude";
-      const args = process.platform === "win32" ? ["claude", "-p", prompt] : ["-p", prompt];
-      const child = spawn(cmd, args, { timeout: 30000 });
-      let out = "";
+      // Windows에선 wsl.exe -e bash -c '...' 로 감싸기 (인수 처리 안정)
+      let cmd, args;
+      if (process.platform === "win32") {
+        // prompt 내 ' 문자 escape
+        const escaped = prompt.replace(/'/g, "'\"'\"'");
+        cmd = "wsl.exe";
+        args = ["--", "bash", "-lc", `claude -p '${escaped}'`];
+      } else {
+        cmd = "claude";
+        args = ["-p", prompt];
+      }
+      const child = spawn(cmd, args, { timeout: 60000, windowsHide: true });
+      let out = "", err = "";
       child.stdout.on("data", d => out += d.toString());
-      child.on("close", () => {
-        const text = (out || "").trim().split("\n").pop().slice(0, 60);
-        showSpeech(text || "음… 모르겠어", 6000);
+      child.stderr.on("data", d => err += d.toString());
+      child.on("close", (code) => {
+        const text = (out || "").trim().split("\n").filter(l => l.trim()).pop();
+        if (text) {
+          showSpeech(text.slice(0, 100), 6000);
+        } else {
+          const msg = err.trim().split("\n").pop() || `exit ${code}`;
+          showSpeech(`Claude 실패: ${msg.slice(0, 60)}`, 5000);
+        }
       });
-      child.on("error", () => showSpeech("Claude CLI 연결 실패", 3000));
+      child.on("error", (e) => showSpeech(`spawn 실패: ${e.message}`, 5000));
     };
     const onCancel = () => askWin.close();
     ipcMain.once("ask-submit", onSubmit);
