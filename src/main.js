@@ -702,9 +702,8 @@ const _menuCtx = {
       if (process.platform === "win32") {
         const escaped = prompt.replace(/'/g, "'\"'\"'");
         cmd = "wsl.exe";
-        // ~/.bashrc 로드 + claude 실행 (nvm PATH 때문에 login shell 필요하지만
-        // 안전하게 ~/.bashrc 명시적 source)
-        args = ["--", "bash", "-c", `source ~/.bashrc 2>/dev/null; source ~/.nvm/nvm.sh 2>/dev/null; claude -p '${escaped}'`];
+        // claude는 ~/.local/bin/claude 에 있음. PATH 명시 후 실행.
+        args = ["--", "bash", "-c", `export PATH="$HOME/.local/bin:$PATH"; claude -p '${escaped}'`];
       } else {
         cmd = "claude";
         args = ["-p", prompt];
