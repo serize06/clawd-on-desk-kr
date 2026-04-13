@@ -1311,7 +1311,7 @@ setInterval(() => {
     for (const [, s] of _state.sessions) {
       if (s && s.agentId && s.state !== "idle") activeAgents.add(s.agentId);
     }
-    if (activeAgents.size >= 2 && Date.now() - lastBattleCommentaryAt > 120000) {
+    if (activeAgents.size >= 2 && Date.now() - lastBattleCommentaryAt > 60000) {
       lastBattleCommentaryAt = Date.now();
       const names = Array.from(activeAgents).join(" vs ");
       const lines = [
@@ -1532,8 +1532,8 @@ function smartSpeak(context, fallback) {
     if (fallback) showSpeech(fallback, 2500);
     return;
   }
-  // 쿨다운: 60초
-  if (now - smartSpeechLastCall < 60000) {
+  // 쿨다운: 10초
+  if (now - smartSpeechLastCall < 10000) {
     if (fallback) showSpeech(fallback, 2500);
     return;
   }
@@ -1874,31 +1874,13 @@ function speakAboutConversation() {
   });
 }
 
-// speakAboutConversation 쿨다운 (같은 턴에 여러 번 호출 방지)
-let _lastConversationCommentAt = 0;
-
+// AI 모드에서는 Claude가 답변 다 끝낸 시점(attention = Stop)에만 반응
 function smartSpeakForState(state) {
-  // attention(Stop)은 대화 기반 코멘트 — 하지만 30초 쿨다운
   if (state === "attention") {
-    const now = Date.now();
-    if (now - _lastConversationCommentAt < 30000) return;
-    _lastConversationCommentAt = now;
     speakAboutConversation();
-    return;
   }
-  const labelMap = {
-    thinking: "친구가 뭔가 골똘히 고민 중",
-    working: "친구가 뭔가 하고 있음",
-    error: "뭔가 잘못됐을 때",
-    notification: "뭔가 알려줄 때",
-    sweeping: "정리하는 중",
-    juggling: "이것저것 바쁜 상황",
-    carrying: "뭔가 옮기는 중",
-  };
-  const label = labelMap[state] || state;
-  const list = EVENT_SPEECHES[state] || [];
-  const fallback = list[Math.floor(Math.random() * list.length)];
-  smartSpeak(label, fallback);
+  // 다른 상태 (thinking/working/error 등)는 AI 모드에서 말하지 않음
+  // → 중간 업데이트마다 말하는 것 방지
 }
 
 // 상태 전환 감지 → 이벤트 말풍선 + 통계
@@ -2026,16 +2008,16 @@ setInterval(() => {
   if (!win || win.isDestroyed() || !win.isVisible()) return;
   if (smartSpeechEnabled) {
     if (smartSpeechPending || conversationCommentPending) return;
-    if (Date.now() - smartSpeechLastCall < 60000) return;
+    if (Date.now() - smartSpeechLastCall < 30000) return;
   }
   if (speechWin && !speechWin.isDestroyed() && speechWin.isVisible()) return;
-  if (Math.random() < 0.2) {
+  if (Math.random() < 0.3) {
     const custom = getCustomPhrases();
     const pool = custom.length ? SPEECH_PHRASES.concat(custom) : SPEECH_PHRASES;
     const phrase = pool[Math.floor(Math.random() * pool.length)];
     showSpeech(phrase, 3500);
   }
-}, 120000);
+}, 60000);
 
 // Clawd 창 이동 시 말풍선 따라가기
 function syncSpeechPosition() {
