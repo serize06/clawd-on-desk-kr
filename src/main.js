@@ -1826,16 +1826,23 @@ setInterval(() => {
   }
 }, 500);
 
-// 주기적으로 랜덤 대사 (커스텀 구절도 포함)
+// 주기적으로 랜덤 대사 (우선순위 낮음 — AI 대사가 활발하면 스킵)
 setInterval(() => {
   if (!win || win.isDestroyed() || !win.isVisible()) return;
-  if (Math.random() < 0.4) {
+  // AI 말풍선이 진행 중이거나 최근 30초 이내에 말했으면 랜덤 스킵
+  if (smartSpeechEnabled) {
+    if (smartSpeechPending || conversationCommentPending) return;
+    if (Date.now() - smartSpeechLastCall < 30000) return;
+  }
+  // 말풍선이 아직 떠있으면 스킵
+  if (speechWin && !speechWin.isDestroyed() && speechWin.isVisible()) return;
+  if (Math.random() < 0.3) {
     const custom = getCustomPhrases();
     const pool = custom.length ? SPEECH_PHRASES.concat(custom) : SPEECH_PHRASES;
     const phrase = pool[Math.floor(Math.random() * pool.length)];
     showSpeech(phrase, 3500);
   }
-}, 20000);
+}, 30000);
 
 // Clawd 창 이동 시 말풍선 따라가기
 function syncSpeechPosition() {
