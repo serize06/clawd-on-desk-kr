@@ -1687,6 +1687,18 @@ function findLatestTranscript() {
   let best = null;
   let bestTime = 0;
 
+  function isClawdOwnTranscript(file) {
+    // 파일 앞 500자에서 Clawd 프롬프트 시그니처 찾기 (우리가 발생시킨 -p 호출)
+    try {
+      const fd = fs.openSync(file, "r");
+      const buf = Buffer.alloc(2000);
+      fs.readSync(fd, buf, 0, 2000, 0);
+      fs.closeSync(fd);
+      const head = buf.toString("utf8");
+      return head.includes("너는 Clawd") || head.includes("픽셀 게 펫") || head.includes("픽셀 게 친구");
+    } catch { return false; }
+  }
+
   function walk(dir, depth = 0) {
     if (depth > 4) return;
     let entries;
@@ -1702,8 +1714,9 @@ function findLatestTranscript() {
         const sid = entry.replace(/\.jsonl$/, "");
         if (sid !== targetSid) continue;
       }
-      // 파일 크기 너무 작으면 스킵 (Clawd의 -p 호출 등)
       if (st.size < 3000) continue;
+      // Clawd 자신의 -p 호출로 생성된 JSONL 제외
+      if (isClawdOwnTranscript(full)) continue;
       if (st.mtimeMs > bestTime) { bestTime = st.mtimeMs; best = full; }
     }
   }
