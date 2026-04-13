@@ -1635,9 +1635,10 @@ function buildClaudeCliSpawn(prompt) {
   const sessionFlag = _clawdSessionInitialized
     ? ["-r", sid]
     : ["--session-id", sid];
-  // --bare: 훅 스킵 + 간소화 (Clawd 자체 호출이 Clawd 훅을 재귀 호출하는 거 방지)
-  // --permission-mode bypassPermissions: 권한 프롬프트 안 띄움 (하단 터미널 리액트 방지)
-  const baseArgs = ["--model", "haiku", "--bare",
+  // --bare 제거 이유: keychain read 스킵돼서 OAuth 로그인 안 읽음 → 인증 실패
+  // 대신 state.js의 isClawdOwnSession 필터로 훅 재귀 호출 차단 중
+  // --permission-mode bypassPermissions: 권한 프롬프트 안 띄움
+  const baseArgs = ["--model", "haiku",
     "--permission-mode", "bypassPermissions",
     ...sessionFlag, "-p", prompt];
   if (process.platform === "win32") {
