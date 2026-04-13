@@ -104,6 +104,12 @@ module.exports = function initMenu(ctx) {
         click: () => ctx.showSpeech && ctx.showSpeech("안녕!", 3000),
       },
       {
+        label: "🤖 AI 말풍선 (실험적)",
+        type: "checkbox",
+        checked: !!ctx.smartSpeechEnabled,
+        click: (item) => { ctx.smartSpeechEnabled = item.checked; },
+      },
+      {
         label: "🌍 중력",
         type: "checkbox",
         checked: !!ctx.gravityEnabled,
@@ -462,6 +468,12 @@ module.exports = function initMenu(ctx) {
       {
         label: "💬 Say hi!",
         click: () => ctx.showSpeech && ctx.showSpeech("안녕!", 3000),
+      },
+      {
+        label: "🤖 AI 말풍선 (실험적)",
+        type: "checkbox",
+        checked: !!ctx.smartSpeechEnabled,
+        click: (item) => { ctx.smartSpeechEnabled = item.checked; },
       },
       {
         label: "🌍 중력",
