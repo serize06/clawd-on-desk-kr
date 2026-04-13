@@ -1311,7 +1311,7 @@ setInterval(() => {
     for (const [, s] of _state.sessions) {
       if (s && s.agentId && s.state !== "idle") activeAgents.add(s.agentId);
     }
-    if (activeAgents.size >= 2 && Date.now() - lastBattleCommentaryAt > 30000) {
+    if (activeAgents.size >= 2 && Date.now() - lastBattleCommentaryAt > 120000) {
       lastBattleCommentaryAt = Date.now();
       const names = Array.from(activeAgents).join(" vs ");
       const lines = [
@@ -1532,8 +1532,8 @@ function smartSpeak(context, fallback) {
     if (fallback) showSpeech(fallback, 2500);
     return;
   }
-  // 15초 쿨다운 안이면 fallback만
-  if (now - smartSpeechLastCall < 15000) {
+  // 쿨다운: 60초
+  if (now - smartSpeechLastCall < 60000) {
     if (fallback) showSpeech(fallback, 2500);
     return;
   }
@@ -1874,9 +1874,15 @@ function speakAboutConversation() {
   });
 }
 
+// speakAboutConversation 쿨다운 (같은 턴에 여러 번 호출 방지)
+let _lastConversationCommentAt = 0;
+
 function smartSpeakForState(state) {
-  // attention(Stop)은 대화 기반 코멘트로 — 실제 user+AI 대화 읽고 반응
+  // attention(Stop)은 대화 기반 코멘트 — 하지만 30초 쿨다운
   if (state === "attention") {
+    const now = Date.now();
+    if (now - _lastConversationCommentAt < 30000) return;
+    _lastConversationCommentAt = now;
     speakAboutConversation();
     return;
   }
@@ -2015,23 +2021,21 @@ setInterval(() => {
   }
 }, 500);
 
-// 주기적으로 랜덤 대사 (우선순위 낮음 — AI 대사가 활발하면 스킵)
+// 주기적 랜덤 대사 — AI 활동 있으면 스킵, 아니면 2분마다 20% 확률로만
 setInterval(() => {
   if (!win || win.isDestroyed() || !win.isVisible()) return;
-  // AI 말풍선이 진행 중이거나 최근 30초 이내에 말했으면 랜덤 스킵
   if (smartSpeechEnabled) {
     if (smartSpeechPending || conversationCommentPending) return;
-    if (Date.now() - smartSpeechLastCall < 30000) return;
+    if (Date.now() - smartSpeechLastCall < 60000) return;
   }
-  // 말풍선이 아직 떠있으면 스킵
   if (speechWin && !speechWin.isDestroyed() && speechWin.isVisible()) return;
-  if (Math.random() < 0.3) {
+  if (Math.random() < 0.2) {
     const custom = getCustomPhrases();
     const pool = custom.length ? SPEECH_PHRASES.concat(custom) : SPEECH_PHRASES;
     const phrase = pool[Math.floor(Math.random() * pool.length)];
     showSpeech(phrase, 3500);
   }
-}, 30000);
+}, 120000);
 
 // Clawd 창 이동 시 말풍선 따라가기
 function syncSpeechPosition() {
