@@ -456,6 +456,9 @@ const _stateCtx = {
       return entry ? entry.enabled !== false : true;
     } catch { return true; }
   },
+  isClawdOwnSession: (sessionId) => {
+    try { return sessionId && sessionId === getClawdSessionId(); } catch { return false; }
+  },
   get theme() { return activeTheme; },
   get win() { return win; },
   get hitWin() { return hitWin; },

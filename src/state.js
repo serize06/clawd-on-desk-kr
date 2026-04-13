@@ -337,7 +337,11 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
   if (agentId && ctx.isAgentEnabled && !ctx.isAgentEnabled(agentId)) {
     return;
   }
-  // Headless 세션(Clawd 자신의 -p 호출 포함)은 조용히 기록만 하고 애니메이션 변경 안 함
+  // Clawd 자신의 세션이면 강제로 headless 처리 (애니메이션 변경 방지)
+  if (ctx.isClawdOwnSession && ctx.isClawdOwnSession(sessionId)) {
+    headless = true;
+  }
+  // Headless 세션은 조용히 기록만 하고 애니메이션 변경 안 함
   if (headless) {
     const existing = sessions.get(sessionId);
     sessions.set(sessionId, {
