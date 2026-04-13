@@ -139,8 +139,8 @@ module.exports = function initMenu(ctx) {
         click: () => ctx.speakRecentCommit && ctx.speakRecentCommit(),
       },
       {
-        label: "🧬 복제",
-        click: () => ctx.cloneClawd && ctx.cloneClawd(),
+        label: "💭 Clawd에게 질문",
+        click: () => ctx.askClawd && ctx.askClawd(),
       },
       {
         label: "📝 커스텀 대사 추가",
@@ -532,8 +532,8 @@ module.exports = function initMenu(ctx) {
         click: () => ctx.speakRecentCommit && ctx.speakRecentCommit(),
       },
       {
-        label: "🧬 복제",
-        click: () => ctx.cloneClawd && ctx.cloneClawd(),
+        label: "💭 Clawd에게 질문",
+        click: () => ctx.askClawd && ctx.askClawd(),
       },
       {
         label: "📝 커스텀 대사 추가",

@@ -675,6 +675,47 @@ const _menuCtx = {
   cancelPomodoro: () => cancelPomodoro(),
   getStatsSummary: () => getStatsSummary(),
   speakRecentCommit: () => speakRecentCommit(),
+  askClawd: () => {
+    const path = require("path");
+    const askWin = new BrowserWindow({
+      width: 420, height: 180,
+      frame: false, transparent: false, resizable: false,
+      alwaysOnTop: true, skipTaskbar: true,
+      modal: false, focusable: true,
+      webPreferences: {
+        preload: path.join(__dirname, "preload-ask.js"),
+        nodeIntegration: false, contextIsolation: true,
+      },
+    });
+    askWin.loadFile(path.join(__dirname, "ask.html"));
+    askWin.once("ready-to-show", () => {
+      askWin.show();
+      askWin.focus();
+    });
+    const onSubmit = (_e, q) => {
+      askWin.close();
+      showSpeech("생각중…", 15000);
+      const { spawn } = require("child_process");
+      const prompt = `사용자 질문: "${q}"\n너는 Clawd라는 귀여운 게 마스코트야. 반말로 50자 이내 짧게 답해. 따옴표/줄바꿈 없이.`;
+      const cmd = process.platform === "win32" ? "wsl" : "claude";
+      const args = process.platform === "win32" ? ["claude", "-p", prompt] : ["-p", prompt];
+      const child = spawn(cmd, args, { timeout: 30000 });
+      let out = "";
+      child.stdout.on("data", d => out += d.toString());
+      child.on("close", () => {
+        const text = (out || "").trim().split("\n").pop().slice(0, 60);
+        showSpeech(text || "음… 모르겠어", 6000);
+      });
+      child.on("error", () => showSpeech("Claude CLI 연결 실패", 3000));
+    };
+    const onCancel = () => askWin.close();
+    ipcMain.once("ask-submit", onSubmit);
+    ipcMain.once("ask-cancel", onCancel);
+    askWin.on("closed", () => {
+      ipcMain.removeListener("ask-submit", onSubmit);
+      ipcMain.removeListener("ask-cancel", onCancel);
+    });
+  },
   cloneClawd: () => {
     // 단일 인스턴스 락 때문에 별도 앱 실행은 불가. 대신 같은 프로세스 내에서 꾸미기용 분신 창을 만듦.
     try {

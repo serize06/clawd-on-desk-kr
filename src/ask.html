@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  html,body{margin:0;padding:16px;background:#1e1e1e;color:#f0e6dc;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",sans-serif;
+    overflow:hidden;user-select:none;}
+  h3{margin:0 0 10px 0;font-size:14px;color:#d97757;}
+  input{
+    width:100%;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);
+    background:rgba(255,255,255,0.05);color:#f0e6dc;font-size:13px;box-sizing:border-box;
+    outline:none;
+  }
+  input:focus{border-color:#d97757;}
+  .hint{margin-top:8px;font-size:11px;color:rgba(255,255,255,0.5);}
+  .btns{margin-top:12px;display:flex;gap:8px;justify-content:flex-end;}
+  button{padding:6px 14px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);
+    background:rgba(255,255,255,0.05);color:#f0e6dc;cursor:pointer;font-size:12px;}
+  button.ok{background:#d97757;border-color:#d97757;color:#fff;}
+</style>
+</head>
+<body>
+<h3>💭 Clawd에게 질문</h3>
+<input id="q" placeholder="뭐든 물어봐..." autofocus>
+<div class="hint">Enter 전송 / Esc 취소. AI 응답은 5~15초 걸림.</div>
+<div class="btns">
+  <button onclick="window.askAPI.cancel()">취소</button>
+  <button class="ok" onclick="submit()">물어보기</button>
+</div>
+<script>
+  const input = document.getElementById("q");
+  function submit() {
+    const v = input.value.trim();
+    if (v) window.askAPI.submit(v);
+  }
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); submit(); }
+    else if (e.key === "Escape") { e.preventDefault(); window.askAPI.cancel(); }
+  });
+</script>
+</body>
+</html>
