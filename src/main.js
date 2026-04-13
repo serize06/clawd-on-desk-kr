@@ -1460,14 +1460,14 @@ setInterval(() => {
 
 // ── 클로드 이벤트 기반 말풍선 ──
 const EVENT_SPEECHES = {
-  thinking: ["생각 중", "잠깐만", "음...", "컨텍스트 보는 중"],
-  working: ["작업 중", "처리하고 있어", "진행 중"],
-  error: ["어 에러났네", "뭐지 이거", "스택트레이스 봐봐", "로그 확인해봐"],
-  attention: ["다 됐어", "완료", "끝났어"],
-  notification: ["확인해줘", "잠깐 봐봐"],
-  sweeping: ["정리 중", "컨텍스트 비우는 중"],
-  juggling: ["여러 개 동시에 중", "좀 바빠"],
-  carrying: ["옮기는 중", "가져가는 중"],
+  thinking: ["음 뭐지", "잠깐", "생각 중", "흠", "어디 보자", "으음"],
+  working: ["오 뭐 만드는 거야", "작업 중이네", "재밌겠다", "오호", "흠 뭐 할까"],
+  error: ["어? 망했네", "뭐지 이거", "아이고", "에러났나봐", "괜찮아 될 거야"],
+  attention: ["오 끝났네", "다 됐어", "잘했어", "완성이다", "굿", "수고했어"],
+  notification: ["저기", "이거 봐봐", "잠깐", "응?"],
+  sweeping: ["정리 좀 할게", "깨끗하게", "싹싹"],
+  juggling: ["바쁘네", "여러 개네", "오 한꺼번에"],
+  carrying: ["영차", "옮기는 중", "어디로 가지"],
 };
 
 function speakForState(state) {
@@ -1488,9 +1488,17 @@ let smartSpeechPending = false;
 let smartSpeechLastCall = 0;
 
 function smartSpeak(context, fallback) {
-  // 중복 호출 방지: 진행 중이거나 최근 5초 내면 스킵
   const now = Date.now();
-  if (smartSpeechPending || now - smartSpeechLastCall < 5000) return;
+  // 이미 AI 호출 진행 중이면 fallback만 바로 보여주고 끝
+  if (smartSpeechPending) {
+    if (fallback) showSpeech(fallback, 2500);
+    return;
+  }
+  // 15초 쿨다운 안이면 fallback만
+  if (now - smartSpeechLastCall < 15000) {
+    if (fallback) showSpeech(fallback, 2500);
+    return;
+  }
   smartSpeechPending = true;
   smartSpeechLastCall = now;
 
@@ -1508,14 +1516,17 @@ function smartSpeak(context, fallback) {
   const child = spawn(cmd, args, { timeout: 15000 });
   let out = "";
   child.stdout.on("data", d => out += d.toString());
+  let err = "";
+  child.stderr.on("data", d => err += d.toString());
   child.on("error", () => {
     smartSpeechPending = false;
     if (fallback) showSpeech(fallback, 2500);
   });
   child.on("close", () => {
     smartSpeechPending = false;
-    const text = (out || "").trim().split("\n").pop().slice(0, 30);
-    if (text) showSpeech(text, 3500);
+    const text = (out || "").trim().split("\n").filter(l => l.trim()).pop();
+    const clean = text ? text.replace(/^["'「『]+|["'」』.]+$/g, "").slice(0, 50) : "";
+    if (clean) showSpeech(clean, 4000);
     else if (fallback) showSpeech(fallback, 2500);
   });
 }
