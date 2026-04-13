@@ -92,6 +92,7 @@ const SCHEMA = {
   },
   clawdColor: { type: "string", default: "" },
   dailyPomodoroGoal: { type: "number", default: 4 },
+  clawdChatSessionId: { type: "string", default: "" },
 };
 
 const SCHEMA_KEYS = Object.freeze(Object.keys(SCHEMA));

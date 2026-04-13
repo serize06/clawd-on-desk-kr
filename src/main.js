@@ -1580,16 +1580,39 @@ function findWindowsClaudeExe() {
   return null;
 }
 
-// Claude CLI spawn 명령+인자 생성 (Windows 네이티브 > WSL fallback, shell 안 씀)
+// Clawd 전용 영구 Claude 세션 UUID (한 번 만들고 계속 재사용)
+let _clawdSessionId = null;
+function getClawdSessionId() {
+  if (_clawdSessionId) return _clawdSessionId;
+  try {
+    const s = _settingsController.getSnapshot();
+    if (s && typeof s.clawdChatSessionId === "string" && s.clawdChatSessionId) {
+      _clawdSessionId = s.clawdChatSessionId;
+      return _clawdSessionId;
+    }
+  } catch {}
+  // UUID v4 생성
+  const { randomBytes } = require("crypto");
+  const b = randomBytes(16);
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const hex = b.toString("hex");
+  _clawdSessionId = `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20,32)}`;
+  try { _settingsController.applyUpdate("clawdChatSessionId", _clawdSessionId); } catch {}
+  return _clawdSessionId;
+}
+
+// Claude CLI spawn (영구 세션 ID 재사용 — 한 세션에서 계속 이어짐)
 function buildClaudeCliSpawn(prompt) {
+  const sid = getClawdSessionId();
+  const baseArgs = ["--model", "haiku", "--session-id", sid, "-p", prompt];
   if (process.platform === "win32") {
     const exe = findWindowsClaudeExe();
-    if (exe) return [exe, ["--model", "haiku", "-p", prompt]];
-    // WSL fallback: bash 안 거치고 직접 실행 — 쉘 escaping 문제 회피
+    if (exe) return [exe, baseArgs];
     const distro = findWslClaudeDistro() || "Ubuntu";
-    return ["wsl.exe", ["-d", distro, "--", "/home/serize/.local/bin/claude", "--model", "haiku", "-p", prompt]];
+    return ["wsl.exe", ["-d", distro, "--", "/home/serize/.local/bin/claude", ...baseArgs]];
   }
-  return ["claude", ["--model", "haiku", "-p", prompt]];
+  return ["claude", baseArgs];
 }
 
 let _wslClaudeDistroCache = null;

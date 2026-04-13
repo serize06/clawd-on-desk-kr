@@ -230,6 +230,7 @@ const updateRegistry = {
     : { status: "error", message: "customPhrases must be an array of strings" },
   clawdColor: requireString("clawdColor"),
   dailyPomodoroGoal: requireFiniteNumber("dailyPomodoroGoal"),
+  clawdChatSessionId: requireString("clawdChatSessionId"),
 
   // ── Internal — version is owned by prefs.js / migrate(), shouldn't normally
   //    be set via applyUpdate, but we accept it so programmatic upgrades work. ──
