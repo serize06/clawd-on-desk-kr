@@ -700,10 +700,11 @@ const _menuCtx = {
       // Windows에선 wsl.exe -e bash -c '...' 로 감싸기 (인수 처리 안정)
       let cmd, args;
       if (process.platform === "win32") {
-        // prompt 내 ' 문자 escape
         const escaped = prompt.replace(/'/g, "'\"'\"'");
         cmd = "wsl.exe";
-        args = ["--", "bash", "-lc", `claude -p '${escaped}'`];
+        // ~/.bashrc 로드 + claude 실행 (nvm PATH 때문에 login shell 필요하지만
+        // 안전하게 ~/.bashrc 명시적 source)
+        args = ["--", "bash", "-c", `source ~/.bashrc 2>/dev/null; source ~/.nvm/nvm.sh 2>/dev/null; claude -p '${escaped}'`];
       } else {
         cmd = "claude";
         args = ["-p", prompt];
