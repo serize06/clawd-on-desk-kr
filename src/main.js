@@ -721,7 +721,7 @@ const _menuCtx = {
       let out = "", err = "";
       child.stdout.on("data", d => out += d.toString());
       child.stderr.on("data", d => err += d.toString());
-      child.on("close", (code) => {
+      child.on("close", (code) => { if (out.trim()) markClawdSessionInitialized();
         const text = (out || "").trim().split("\n").filter(l => l.trim()).pop();
         if (text) {
           showSpeech(text.slice(0, 100), 6000);
@@ -1541,7 +1541,7 @@ function smartSpeak(context, fallback) {
     smartSpeechPending = false;
     if (fallback) showSpeech(fallback, 2500);
   });
-  child.on("close", () => {
+  child.on("close", () => { if (out.trim()) markClawdSessionInitialized();
     smartSpeechPending = false;
     const text = (out || "").trim().split("\n").filter(l => l.trim()).pop();
     const clean = text ? text.replace(/^["'「『]+|["'」』.]+$/g, "").slice(0, 50) : "";
@@ -1585,30 +1585,46 @@ function findWindowsClaudeExe() {
 
 // Clawd 전용 영구 Claude 세션 UUID (한 번 만들고 계속 재사용)
 let _clawdSessionId = null;
+let _clawdSessionInitialized = false;
 function getClawdSessionId() {
   if (_clawdSessionId) return _clawdSessionId;
   try {
     const s = _settingsController.getSnapshot();
     if (s && typeof s.clawdChatSessionId === "string" && s.clawdChatSessionId) {
       _clawdSessionId = s.clawdChatSessionId;
+      _clawdSessionInitialized = !!s.clawdChatSessionInitialized;
       return _clawdSessionId;
     }
   } catch {}
-  // UUID v4 생성
   const { randomBytes } = require("crypto");
   const b = randomBytes(16);
   b[6] = (b[6] & 0x0f) | 0x40;
   b[8] = (b[8] & 0x3f) | 0x80;
   const hex = b.toString("hex");
   _clawdSessionId = `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20,32)}`;
-  try { _settingsController.applyUpdate("clawdChatSessionId", _clawdSessionId); } catch {}
+  _clawdSessionInitialized = false;
+  try {
+    _settingsController.applyUpdate("clawdChatSessionId", _clawdSessionId);
+    _settingsController.applyUpdate("clawdChatSessionInitialized", false);
+  } catch {}
   return _clawdSessionId;
 }
 
-// Claude CLI spawn (영구 세션 ID 재사용 — 한 세션에서 계속 이어짐)
+function markClawdSessionInitialized() {
+  if (_clawdSessionInitialized) return;
+  _clawdSessionInitialized = true;
+  try { _settingsController.applyUpdate("clawdChatSessionInitialized", true); } catch {}
+}
+
+// Claude CLI spawn
+// 첫 호출: --session-id <uuid> (세션 생성)
+// 이후 호출: -r <uuid> (기존 세션 이어받기)
 function buildClaudeCliSpawn(prompt) {
   const sid = getClawdSessionId();
-  const baseArgs = ["--model", "haiku", "--session-id", sid, "-p", prompt];
+  const sessionFlag = _clawdSessionInitialized
+    ? ["-r", sid]
+    : ["--session-id", sid];
+  const baseArgs = ["--model", "haiku", ...sessionFlag, "-p", prompt];
   if (process.platform === "win32") {
     const exe = findWindowsClaudeExe();
     if (exe) return [exe, baseArgs];
@@ -1829,7 +1845,7 @@ function speakAboutConversation() {
   let out = "", err = "";
   child.stdout.on("data", d => out += d.toString());
   child.stderr.on("data", d => err += d.toString());
-  child.on("close", () => {
+  child.on("close", () => { if (out.trim()) markClawdSessionInitialized();
     conversationCommentPending = false;
     const text = (out || "").trim().split("\n").filter(l => l.trim()).pop();
     const clean = text ? text.replace(/^["'「『]+|["'」』.]+$/g, "").slice(0, 60) : "";

@@ -231,6 +231,7 @@ const updateRegistry = {
   clawdColor: requireString("clawdColor"),
   dailyPomodoroGoal: requireFiniteNumber("dailyPomodoroGoal"),
   clawdChatSessionId: requireString("clawdChatSessionId"),
+  clawdChatSessionInitialized: requireBoolean("clawdChatSessionInitialized"),
 
   // ── Internal — version is owned by prefs.js / migrate(), shouldn't normally
   //    be set via applyUpdate, but we accept it so programmatic upgrades work. ──
