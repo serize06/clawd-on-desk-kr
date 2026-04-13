@@ -675,6 +675,7 @@ const _menuCtx = {
   cancelPomodoro: () => cancelPomodoro(),
   getStatsSummary: () => getStatsSummary(),
   speakRecentCommit: () => speakRecentCommit(),
+  speakAboutConversation: () => speakAboutConversation(),
   askClawd: () => {
     const path = require("path");
     const askWin = new BrowserWindow({
@@ -1531,12 +1532,117 @@ function smartSpeak(context, fallback) {
   });
 }
 
+// 가장 최근에 수정된 CC 세션 JSONL 찾기
+function findLatestTranscript() {
+  const fs = require("fs");
+  const path = require("path");
+  const os = require("os");
+  const bases = [
+    "\\\\wsl.localhost\\Ubuntu\\home\\serize\\.claude\\projects",
+    path.join(os.homedir(), ".claude", "projects"),
+  ];
+  let best = null;
+  let bestTime = 0;
+  for (const base of bases) {
+    try {
+      for (const proj of fs.readdirSync(base)) {
+        const projDir = path.join(base, proj);
+        let entries;
+        try { entries = fs.readdirSync(projDir); } catch { continue; }
+        for (const entry of entries) {
+          if (!entry.endsWith(".jsonl")) continue;
+          const full = path.join(projDir, entry);
+          try {
+            const st = fs.statSync(full);
+            if (st.mtimeMs > bestTime) { bestTime = st.mtimeMs; best = full; }
+          } catch {}
+        }
+      }
+    } catch {}
+  }
+  return best;
+}
+
+// JSONL에서 마지막 user 메시지 + 마지막 assistant 메시지 추출
+function readLastExchange(file) {
+  try {
+    const fs = require("fs");
+    const content = fs.readFileSync(file, "utf8");
+    const lines = content.trim().split("\n");
+    let lastUser = "", lastAssistant = "";
+    for (let i = lines.length - 1; i >= 0 && (!lastUser || !lastAssistant); i--) {
+      try {
+        const obj = JSON.parse(lines[i]);
+        const role = obj.type || obj.role;
+        const msg = obj.message;
+        if (!msg) continue;
+        const contentStr = typeof msg.content === "string"
+          ? msg.content
+          : Array.isArray(msg.content)
+            ? msg.content.filter(c => c.type === "text").map(c => c.text).join(" ")
+            : "";
+        if (!contentStr) continue;
+        if (role === "user" && !lastUser) lastUser = contentStr;
+        else if (role === "assistant" && !lastAssistant) lastAssistant = contentStr;
+      } catch {}
+    }
+    return { user: lastUser.slice(-800), assistant: lastAssistant.slice(-800) };
+  } catch { return null; }
+}
+
+// 대화 기반 버디 코멘트
+let conversationCommentPending = false;
+function speakAboutConversation() {
+  if (conversationCommentPending) return;
+  const tr = findLatestTranscript();
+  if (!tr) { showSpeech("대화 기록 못 찾겠어", 2500); return; }
+  const ex = readLastExchange(tr);
+  if (!ex || (!ex.user && !ex.assistant)) { showSpeech("대화가 비어있네", 2500); return; }
+  conversationCommentPending = true;
+
+  const prompt = `너는 친구가 AI랑 대화하는 걸 옆에서 지켜보는 귀여운 픽셀 게 펫 Clawd야. AI 말투 쓰지 말고 그냥 친구가 옆에서 한 마디 던지듯 반응해.\n\n사용자: ${ex.user || "(없음)"}\nAI 답변: ${ex.assistant || "(없음)"}\n\n이 대화에 대해 친구처럼 한 마디 해. 30자 이내, 반말, 이모지/따옴표 없이. 답만 적어.`;
+
+  const { spawn } = require("child_process");
+  const escaped = prompt.replace(/'/g, "'\"'\"'").replace(/\n/g, "\\n");
+  let cmd, args;
+  if (process.platform === "win32") {
+    cmd = "wsl.exe";
+    args = ["-d", "Ubuntu", "--", "bash", "-c", `export PATH="$HOME/.local/bin:$PATH"; echo '${escaped}' | xargs -0 -I{} claude --model haiku -p {}`];
+    // xargs 복잡하면 stdin 사용
+    args = ["-d", "Ubuntu", "--", "bash", "-c", `export PATH="$HOME/.local/bin:$PATH"; claude --model haiku -p '${escaped}'`];
+  } else {
+    cmd = "claude";
+    args = ["--model", "haiku", "-p", prompt];
+  }
+
+  showSpeech("음...", 30000);
+  const child = spawn(cmd, args, { timeout: 60000, windowsHide: true });
+  let out = "", err = "";
+  child.stdout.on("data", d => out += d.toString());
+  child.stderr.on("data", d => err += d.toString());
+  child.on("close", () => {
+    conversationCommentPending = false;
+    const text = (out || "").trim().split("\n").filter(l => l.trim()).pop();
+    const clean = text ? text.replace(/^["'「『]+|["'」』.]+$/g, "").slice(0, 60) : "";
+    if (clean) showSpeech(clean, 5000);
+    else showSpeech(err.trim().slice(-40) || "음 잘 모르겠네", 4000);
+  });
+  child.on("error", (e) => {
+    conversationCommentPending = false;
+    showSpeech(`실패: ${e.message}`, 3000);
+  });
+}
+
 function smartSpeakForState(state) {
+  // attention(Stop)은 대화 기반 코멘트로 — 실제 user+AI 대화 읽고 반응
+  if (state === "attention") {
+    speakAboutConversation();
+    return;
+  }
   const labelMap = {
     thinking: "친구가 뭔가 골똘히 고민 중",
     working: "친구가 뭔가 하고 있음",
     error: "뭔가 잘못됐을 때",
-    attention: "좋은 일 끝났을 때",
     notification: "뭔가 알려줄 때",
     sweeping: "정리하는 중",
     juggling: "이것저것 바쁜 상황",

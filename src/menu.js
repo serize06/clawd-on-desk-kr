@@ -143,6 +143,10 @@ module.exports = function initMenu(ctx) {
         click: () => ctx.askClawd && ctx.askClawd(),
       },
       {
+        label: "💬 대화 평 듣기",
+        click: () => ctx.speakAboutConversation && ctx.speakAboutConversation(),
+      },
+      {
         label: "📝 커스텀 대사 추가",
         click: () => ctx.promptCustomPhrase && ctx.promptCustomPhrase(),
       },
@@ -534,6 +538,10 @@ module.exports = function initMenu(ctx) {
       {
         label: "💭 Clawd에게 질문",
         click: () => ctx.askClawd && ctx.askClawd(),
+      },
+      {
+        label: "💬 대화 평 듣기",
+        click: () => ctx.speakAboutConversation && ctx.speakAboutConversation(),
       },
       {
         label: "📝 커스텀 대사 추가",
