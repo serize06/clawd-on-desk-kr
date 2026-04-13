@@ -3,7 +3,8 @@
 </p>
 <h1 align="center">Clawd on Desk</h1>
 <p align="center">
-  <a href="README.zh-CN.md">中文版</a>
+  <a href="README.zh-CN.md">中文版</a> ·
+  <a href="README.ko.md">한국어</a>
 </p>
 
 A desktop pet that reacts to your AI coding agent sessions in real-time. Clawd lives on your screen — thinking when you prompt, typing when tools run, juggling subagents, reviewing permissions, celebrating when tasks complete, and sleeping when you're away. Ships with two built-in themes: **Clawd** (pixel crab) and **Calico** (三花猫), with full support for custom themes.
