@@ -2594,9 +2594,15 @@ if (!gotTheLock) {
           });
           return;
         }
-        // Non-permission event — clear any lingering Codex notify bubbles
         clearCodexNotifyBubbles(sid);
         updateSession(sid, state, event, null, extra.cwd, null, null, null, "codex");
+        // Codex 턴 종료마다 happy 애니 + 대화 평
+        if (event === "event_msg:task_complete") {
+          try { setState("attention", "clawd-happy.svg"); } catch {}
+          if (smartSpeechEnabled) {
+            setTimeout(() => speakAboutConversation(), 500);
+          }
+        }
       });
       _codexMonitor.start();
     } catch (err) {
