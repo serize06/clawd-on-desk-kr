@@ -1580,17 +1580,14 @@ function findWindowsClaudeExe() {
   return null;
 }
 
-// Claude CLI spawn 명령+인자 생성 (Windows 네이티브 > WSL fallback)
+// Claude CLI spawn 명령+인자 생성 (Windows 네이티브 > WSL fallback, shell 안 씀)
 function buildClaudeCliSpawn(prompt) {
   if (process.platform === "win32") {
     const exe = findWindowsClaudeExe();
     if (exe) return [exe, ["--model", "haiku", "-p", prompt]];
-    // WSL fallback
-    const escaped = prompt.replace(/'/g, "'\"'\"'");
-    // distro 자동 감지: claude 있는 distro 중 첫 번째
+    // WSL fallback: bash 안 거치고 직접 실행 — 쉘 escaping 문제 회피
     const distro = findWslClaudeDistro() || "Ubuntu";
-    return ["wsl.exe", ["-d", distro, "--", "bash", "-c",
-      `export PATH="$HOME/.local/bin:$PATH"; claude --model haiku -p '${escaped}'`]];
+    return ["wsl.exe", ["-d", distro, "--", "/home/serize/.local/bin/claude", "--model", "haiku", "-p", prompt]];
   }
   return ["claude", ["--model", "haiku", "-p", prompt]];
 }
