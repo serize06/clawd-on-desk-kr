@@ -1563,80 +1563,134 @@ function smartSpeak(context, fallback) {
   });
 }
 
-// Clawd 자신이 발생시킨 headless 세션 ID 추적 (이 파일들은 제외)
-const _clawdOwnSessionIds = new Set();
-
-// Clawd가 CC 세션 Map에서 추적 중인 활성 non-headless 세션 ID 뽑기
-function getActiveUserSessionIds() {
-  const ids = new Set();
+// Clawd Map에서 추적 중인 활성 non-headless 세션과 그 agentId 반환
+function getActiveUserSession() {
+  let best = null;
   try {
     for (const [sid, s] of _state.sessions) {
       if (!s || s.headless) continue;
-      if (_clawdOwnSessionIds.has(sid)) continue;
-      ids.add(sid);
+      if (!best || (s.updatedAt || 0) > (best.updatedAt || 0)) {
+        best = { sessionId: sid, ...s };
+      }
     }
   } catch {}
-  return ids;
-}
-
-// 최신 사용자 CC 세션 JSONL 찾기 (Clawd의 -p 호출 JSONL은 제외)
-function findLatestTranscript() {
-  const fs = require("fs");
-  const path = require("path");
-  const os = require("os");
-  const bases = [
-    "\\\\wsl.localhost\\Ubuntu\\home\\serize\\.claude\\projects",
-    path.join(os.homedir(), ".claude", "projects"),
-  ];
-  const activeIds = getActiveUserSessionIds();
-  let best = null;
-  let bestTime = 0;
-  for (const base of bases) {
-    try {
-      for (const proj of fs.readdirSync(base)) {
-        const projDir = path.join(base, proj);
-        let entries;
-        try { entries = fs.readdirSync(projDir); } catch { continue; }
-        for (const entry of entries) {
-          if (!entry.endsWith(".jsonl")) continue;
-          const sessionId = entry.replace(/\.jsonl$/, "");
-          // 활성 사용자 세션 목록이 있으면 그것만, 없으면 휴리스틱: 파일 크기 5KB 이상
-          if (activeIds.size > 0 && !activeIds.has(sessionId)) continue;
-          const full = path.join(projDir, entry);
-          try {
-            const st = fs.statSync(full);
-            if (activeIds.size === 0 && st.size < 5000) continue; // 헤드리스 -p 짧은 파일 제외
-            if (st.mtimeMs > bestTime) { bestTime = st.mtimeMs; best = full; }
-          } catch {}
-        }
-      }
-    } catch {}
-  }
   return best;
 }
 
+// 에이전트별 transcript 디렉토리
+function getTranscriptBases(agentId) {
+  const path = require("path");
+  const os = require("os");
+  const WSL_HOME = "\\\\wsl.localhost\\Ubuntu\\home\\serize";
+  const HOME = os.homedir();
+  const map = {
+    "claude-code": [`${WSL_HOME}\\.claude\\projects`, path.join(HOME, ".claude", "projects")],
+    "codex":       [`${WSL_HOME}\\.codex\\sessions`,  path.join(HOME, ".codex",  "sessions")],
+    "gemini-cli":  [`${WSL_HOME}\\.gemini\\sessions`, path.join(HOME, ".gemini", "sessions"),
+                    `${WSL_HOME}\\.gemini`, path.join(HOME, ".gemini")],
+    "copilot-cli": [`${WSL_HOME}\\.copilot`,          path.join(HOME, ".copilot")],
+    "opencode":    [`${WSL_HOME}\\.config\\opencode`, path.join(HOME, ".config", "opencode"),
+                    path.join(HOME, "AppData", "Roaming", "opencode")],
+    "cursor-agent":[path.join(HOME, "AppData", "Roaming", "Cursor", "logs"),
+                    path.join(HOME, "AppData", "Roaming", "Cursor", "User", "History")],
+    "kiro-cli":    [`${WSL_HOME}\\.kiro`, path.join(HOME, ".kiro")],
+    "codebuddy":   [`${WSL_HOME}\\.codebuddy`, path.join(HOME, ".codebuddy")],
+    "vscode-agent":[path.join(HOME, "AppData", "Roaming", "Code", "logs")],
+  };
+  return map[agentId] || map["claude-code"];
+}
+
+// 가장 최근 transcript JSONL 찾기 (agent에 맞는 디렉토리만)
+function findLatestTranscript() {
+  const fs = require("fs");
+  const path = require("path");
+  const active = getActiveUserSession();
+  const agentId = active && active.agentId || "claude-code";
+  const targetSid = active && active.sessionId;
+
+  const bases = getTranscriptBases(agentId);
+  let best = null;
+  let bestTime = 0;
+
+  function walk(dir, depth = 0) {
+    if (depth > 4) return;
+    let entries;
+    try { entries = fs.readdirSync(dir); } catch { return; }
+    for (const entry of entries) {
+      const full = path.join(dir, entry);
+      let st;
+      try { st = fs.statSync(full); } catch { continue; }
+      if (st.isDirectory()) { walk(full, depth + 1); continue; }
+      if (!entry.endsWith(".jsonl")) continue;
+      // Claude-code 경로: 파일명이 session id — 활성 세션만
+      if (agentId === "claude-code" && targetSid) {
+        const sid = entry.replace(/\.jsonl$/, "");
+        if (sid !== targetSid) continue;
+      }
+      // 파일 크기 너무 작으면 스킵 (Clawd의 -p 호출 등)
+      if (st.size < 3000) continue;
+      if (st.mtimeMs > bestTime) { bestTime = st.mtimeMs; best = full; }
+    }
+  }
+  for (const base of bases) walk(base);
+  return { file: best, agentId };
+}
+
 // JSONL에서 마지막 user 메시지 + 마지막 assistant 메시지 추출
-function readLastExchange(file) {
+// agentId별로 포맷이 달라서 분기
+function readLastExchange(file, agentId) {
   try {
     const fs = require("fs");
     const content = fs.readFileSync(file, "utf8");
     const lines = content.trim().split("\n");
     let lastUser = "", lastAssistant = "";
+
     for (let i = lines.length - 1; i >= 0 && (!lastUser || !lastAssistant); i--) {
-      try {
-        const obj = JSON.parse(lines[i]);
-        const role = obj.type || obj.role;
-        const msg = obj.message;
-        if (!msg) continue;
-        const contentStr = typeof msg.content === "string"
-          ? msg.content
-          : Array.isArray(msg.content)
-            ? msg.content.filter(c => c.type === "text").map(c => c.text).join(" ")
-            : "";
-        if (!contentStr) continue;
-        if (role === "user" && !lastUser) lastUser = contentStr;
-        else if (role === "assistant" && !lastAssistant) lastAssistant = contentStr;
-      } catch {}
+      let obj; try { obj = JSON.parse(lines[i]); } catch { continue; }
+
+      if (agentId === "codex") {
+        if (obj.type === "event_msg") {
+          const t = obj.text || (obj.payload && obj.payload.text) || "";
+          if (obj.subtype === "user_message" && t && !lastUser) lastUser = t;
+          else if (obj.subtype === "agent_message" && t && !lastAssistant) lastAssistant = t;
+        }
+        continue;
+      }
+
+      if (agentId === "gemini-cli") {
+        // Gemini 세션 로그: { role: "user"|"model", parts: [{text}] } 형태 (추정)
+        const role = obj.role || obj.type;
+        const text = (obj.text) || (Array.isArray(obj.parts) ? obj.parts.map(p => p.text || "").join(" ") : "") || obj.content;
+        if (!text) continue;
+        if ((role === "user" || role === "User") && !lastUser) lastUser = text;
+        else if ((role === "model" || role === "assistant" || role === "Gemini") && !lastAssistant) lastAssistant = text;
+        continue;
+      }
+
+      if (agentId === "opencode" || agentId === "copilot-cli" || agentId === "kiro-cli" || agentId === "codebuddy") {
+        // 일반적 포맷 시도: role/content 있는 건 다 시도
+        const role = obj.role || obj.type;
+        const text = typeof obj.content === "string" ? obj.content
+          : Array.isArray(obj.content) ? obj.content.filter(c => c.text).map(c => c.text).join(" ")
+          : obj.text || obj.message || "";
+        if (!text) continue;
+        if (role === "user" && !lastUser) lastUser = text;
+        else if ((role === "assistant" || role === "agent") && !lastAssistant) lastAssistant = text;
+        continue;
+      }
+
+      // claude-code 형식 (기본)
+      const role = obj.type || obj.role;
+      const msg = obj.message;
+      if (!msg) continue;
+      const contentStr = typeof msg.content === "string"
+        ? msg.content
+        : Array.isArray(msg.content)
+          ? msg.content.filter(c => c.type === "text").map(c => c.text).join(" ")
+          : "";
+      if (!contentStr) continue;
+      if (role === "user" && !lastUser) lastUser = contentStr;
+      else if (role === "assistant" && !lastAssistant) lastAssistant = contentStr;
     }
     return { user: lastUser.slice(-800), assistant: lastAssistant.slice(-800) };
   } catch { return null; }
@@ -1646,9 +1700,9 @@ function readLastExchange(file) {
 let conversationCommentPending = false;
 function speakAboutConversation() {
   if (conversationCommentPending) return;
-  const tr = findLatestTranscript();
-  if (!tr) { showSpeech("대화 기록 못 찾겠어", 2500); return; }
-  const ex = readLastExchange(tr);
+  const res = findLatestTranscript();
+  if (!res || !res.file) { showSpeech("대화 기록 못 찾겠어", 2500); return; }
+  const ex = readLastExchange(res.file, res.agentId);
   if (!ex || (!ex.user && !ex.assistant)) { showSpeech("대화가 비어있네", 2500); return; }
   conversationCommentPending = true;
 
