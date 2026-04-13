@@ -676,14 +676,34 @@ const _menuCtx = {
   getStatsSummary: () => getStatsSummary(),
   speakRecentCommit: () => speakRecentCommit(),
   cloneClawd: () => {
+    // 단일 인스턴스 락 때문에 별도 앱 실행은 불가. 대신 같은 프로세스 내에서 꾸미기용 분신 창을 만듦.
     try {
-      const { exec } = require("child_process");
-      exec(`"${process.execPath}" "${require("path").resolve(__dirname, "..", "launch.js")}"`, {
-        detached: true,
-        stdio: "ignore",
-        env: { ...process.env, CLAWD_CLONE: "1" },
+      if (!activeTheme) return;
+      const path = require("path");
+      const b = win.getBounds();
+      const display = screen.getDisplayMatching(b);
+      const wa = display.workArea;
+      const offsetX = 200;
+      const dup = new BrowserWindow({
+        width: b.width, height: b.height,
+        x: Math.min(wa.x + wa.width - b.width, b.x + offsetX),
+        y: b.y,
+        frame: false, transparent: true, resizable: false,
+        alwaysOnTop: true, skipTaskbar: true,
+        webPreferences: { nodeIntegration: false, contextIsolation: true },
       });
-    } catch {}
+      // 간단 HTML: idle SVG + 드래그 가능
+      const svg = path.join(__dirname, "..", "assets", "svg", "clawd-idle-follow.svg");
+      const html = `<!DOCTYPE html><html><head><style>
+        html,body{margin:0;padding:0;background:transparent;-webkit-app-region:drag;overflow:hidden;cursor:move}
+        object{width:100%;height:100%;pointer-events:none}
+      </style></head>
+      <body><object type="image/svg+xml" data="file:///${svg.replace(/\\/g,'/')}"></object></body></html>`;
+      dup.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
+      showSpeech("복제 완료! 🐾", 3000);
+    } catch (e) {
+      showSpeech(`복제 실패: ${e.message}`, 3000);
+    }
   },
   promptCustomPhrase: () => {
     const { dialog } = require("electron");
