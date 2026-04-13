@@ -669,6 +669,8 @@ const _menuCtx = {
   set gravityEnabled(v) { gravityEnabled = !!v; if (!v && gravityTimer) { clearInterval(gravityTimer); gravityTimer = null; } },
   get followCursorEnabled() { return followCursorEnabled; },
   set followCursorEnabled(v) { followCursorEnabled = !!v; },
+  get smartSpeechEnabled() { return smartSpeechEnabled; },
+  set smartSpeechEnabled(v) { smartSpeechEnabled = !!v; },
   startPomodoro: (min) => startPomodoro(min),
   cancelPomodoro: () => cancelPomodoro(),
   get walkEnabled() { return walkEnabled; },
@@ -1193,11 +1195,64 @@ const EVENT_SPEECHES = {
 };
 
 function speakForState(state) {
+  if (smartSpeechEnabled) {
+    smartSpeakForState(state);
+    return;
+  }
   const list = EVENT_SPEECHES[state];
   if (!list) return;
   if (Math.random() > 0.5) return;
   const phrase = list[Math.floor(Math.random() * list.length)];
   showSpeech(phrase, 2500);
+}
+
+// ── 🤖 AI 말풍선 (claude CLI 사용) ──
+let smartSpeechEnabled = false;
+let smartSpeechPending = false;
+let smartSpeechLastCall = 0;
+
+function smartSpeak(context, fallback) {
+  // 중복 호출 방지: 진행 중이거나 최근 5초 내면 스킵
+  const now = Date.now();
+  if (smartSpeechPending || now - smartSpeechLastCall < 5000) return;
+  smartSpeechPending = true;
+  smartSpeechLastCall = now;
+
+  const { spawn } = require("child_process");
+  const prompt = `너는 Clawd라는 귀여운 게 마스코트야. 사용자가 Claude Code로 코딩 중이고 ${context} 이 생겼어. 이에 반응하는 짧은 한 줄 한국어 대사를 만들어(존댓말 말고 반말, 15자 이내, 따옴표 없이, 줄바꿈 없이).`;
+  // WSL 쪽 claude CLI를 사용 (Windows에선 wsl claude)
+  const cmd = process.platform === "win32" ? "wsl" : "claude";
+  const args = process.platform === "win32" ? ["claude", "-p", prompt] : ["-p", prompt];
+  const child = spawn(cmd, args, { timeout: 15000 });
+  let out = "";
+  child.stdout.on("data", d => out += d.toString());
+  child.on("error", () => {
+    smartSpeechPending = false;
+    if (fallback) showSpeech(fallback, 2500);
+  });
+  child.on("close", () => {
+    smartSpeechPending = false;
+    const text = (out || "").trim().split("\n").pop().slice(0, 30);
+    if (text) showSpeech(text, 3500);
+    else if (fallback) showSpeech(fallback, 2500);
+  });
+}
+
+function smartSpeakForState(state) {
+  const labelMap = {
+    thinking: "생각하는 상황",
+    working: "작업하는 상황",
+    error: "에러 발생",
+    attention: "작업 완료",
+    notification: "알림",
+    sweeping: "컨텍스트 정리",
+    juggling: "동시 작업",
+    carrying: "파일 이동",
+  };
+  const label = labelMap[state] || state;
+  const list = EVENT_SPEECHES[state] || [];
+  const fallback = list[Math.floor(Math.random() * list.length)];
+  smartSpeak(label, fallback);
 }
 
 // 상태 전환 감지 → 이벤트 말풍선
