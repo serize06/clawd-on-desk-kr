@@ -685,6 +685,51 @@ const _menuCtx = {
       });
     } catch {}
   },
+  promptCustomPhrase: () => {
+    const { dialog } = require("electron");
+    dialog.showSaveDialog(win, {
+      title: "커스텀 대사 추가 (파일명을 대사로 씁니다)",
+      defaultPath: "오늘도 화이팅",
+    }).then(r => {
+      if (r.canceled || !r.filePath) return;
+      const phrase = require("path").basename(r.filePath).replace(/\.(txt|md)$/, "");
+      if (!phrase) return;
+      const cur = getCustomPhrases();
+      const next = [...cur, phrase];
+      _settingsController.applyUpdate("customPhrases", next);
+      showSpeech(`"${phrase}" 추가됨`, 3000);
+    });
+  },
+  setDailyGoal: () => {
+    const { dialog } = require("electron");
+    dialog.showMessageBox(win, {
+      message: `일일 포모도로 목표 설정`,
+      detail: `현재: ${dailyPomodoroGoal}회`,
+      buttons: ["2회", "4회", "6회", "8회", "취소"],
+      cancelId: 4,
+    }).then(r => {
+      if (r.response >= 4) return;
+      const goals = [2, 4, 6, 8];
+      dailyPomodoroGoal = goals[r.response];
+      _settingsController.applyUpdate("dailyPomodoroGoal", dailyPomodoroGoal);
+      showSpeech(`목표 ${dailyPomodoroGoal}회 설정됨`, 2500);
+    });
+  },
+  setClawdColor: () => {
+    const { dialog } = require("electron");
+    dialog.showMessageBox(win, {
+      message: "Clawd 색상",
+      buttons: ["기본 (코랄)", "파랑", "초록", "보라", "분홍", "취소"],
+      cancelId: 5,
+    }).then(r => {
+      const colors = ["", "#4a90e2", "#3ece7f", "#9b59b6", "#ff6fa5"];
+      if (r.response >= 5) return;
+      const c = colors[r.response];
+      _settingsController.applyUpdate("clawdColor", c);
+      if (win) win.webContents.send("set-clawd-color", c);
+      showSpeech("색 바꿨어", 2500);
+    });
+  },
   get walkEnabled() { return walkEnabled; },
   set walkEnabled(v) {
     walkEnabled = !!v;
@@ -1117,6 +1162,81 @@ function startGravityFall() {
   }, 16);
 }
 
+// ── 🎯 일일 목표 ──
+let dailyPomodoroGoal = 4;
+let dailyPomodoroReached = false;
+let dailyGoalDate = new Date().toDateString();
+
+function checkDailyGoal() {
+  const today = new Date().toDateString();
+  if (today !== dailyGoalDate) {
+    dailyGoalDate = today;
+    dailyPomodoroReached = false;
+    sessionStats.pomodoros = 0;
+  }
+  if (!dailyPomodoroReached && sessionStats.pomodoros >= dailyPomodoroGoal) {
+    dailyPomodoroReached = true;
+    showSpeech(`🎯 오늘 목표 ${dailyPomodoroGoal}회 달성!`, 6000);
+    if (win && !win.isDestroyed()) win.webContents.send("celebrate");
+    if (win) win.webContents.send("play-sound", "complete");
+  }
+}
+
+// ── 🔔 시스템 Toast 알림 ──
+function showSystemNotification(title, body) {
+  try {
+    const { Notification } = require("electron");
+    if (!Notification.isSupported()) return;
+    new Notification({ title, body, silent: false }).show();
+  } catch {}
+}
+
+// ── 🏆 에이전트 배틀 중계 ──
+let lastBattleCommentaryAt = 0;
+setInterval(() => {
+  try {
+    const activeAgents = new Set();
+    for (const [, s] of _state.sessions) {
+      if (s && s.agentId && s.state !== "idle") activeAgents.add(s.agentId);
+    }
+    if (activeAgents.size >= 2 && Date.now() - lastBattleCommentaryAt > 30000) {
+      lastBattleCommentaryAt = Date.now();
+      const names = Array.from(activeAgents).join(" vs ");
+      const lines = [
+        `${names} 붙었다!`,
+        `${activeAgents.size}명 동시 작업 중`,
+        `멀티 에이전트 레이스`,
+        `${names} 실시간 대결`,
+      ];
+      showSpeech(lines[Math.floor(Math.random() * lines.length)], 4000);
+    }
+  } catch {}
+}, 5000);
+
+// ── 📝 커스텀 대사 (prefs에서 읽음) ──
+function getCustomPhrases() {
+  try {
+    const s = _settingsController.getSnapshot();
+    return Array.isArray(s.customPhrases) ? s.customPhrases : [];
+  } catch { return []; }
+}
+
+// ── 🎨 색상 커스터마이즈 ──
+function getCustomColor() {
+  try {
+    const s = _settingsController.getSnapshot();
+    return typeof s.clawdColor === "string" ? s.clawdColor : null;
+  } catch { return null; }
+}
+
+// ── 🎵 사운드 이벤트 ──
+function playSoundEvent(name) {
+  try {
+    if (!win || win.isDestroyed()) return;
+    win.webContents.send("play-sound-event", name);
+  } catch {}
+}
+
 // ── 세션 통계 ──
 const sessionStats = {
   startedAt: Date.now(),
@@ -1181,8 +1301,10 @@ function startPomodoro(minutes = 25) {
     pomodoroTimer = null;
     pomodoroEndsAt = 0;
     bumpStat("pomodoros");
+    checkDailyGoal();
     try { setState("attention", "clawd-happy.svg"); } catch {}
     showSpeech("끝! 휴식 시간~", 5000);
+    showSystemNotification("🍅 포모도로 완료", `총 ${sessionStats.pomodoros}회 완료`);
     try {
       if (win) win.webContents.send("play-sound", "complete");
     } catch {}
@@ -1210,11 +1332,24 @@ setInterval(() => {
   }
 }, 20000);
 
-// ── 더블클릭 쓰다듬기 반응 ──
+// ── 더블클릭 쓰다듬기 + 미니게임 (먹이 주기) ──
+let petDoubleClickCount = 0;
+let petDoubleClickResetTimer = null;
 ipcMain.on("pet-double-click", () => {
   try { setState("attention", "clawd-happy.svg"); } catch {}
-  const phrases = ["헤헤", "좋아", "고마워", "💕", "ㅎㅎ"];
-  showSpeech(phrases[Math.floor(Math.random() * phrases.length)], 2000);
+  petDoubleClickCount++;
+  if (petDoubleClickResetTimer) clearTimeout(petDoubleClickResetTimer);
+  petDoubleClickResetTimer = setTimeout(() => { petDoubleClickCount = 0; }, 5000);
+
+  if (petDoubleClickCount >= 5) {
+    showSpeech("배불러! 그만 그만~", 3000);
+    if (win && !win.isDestroyed()) win.webContents.send("celebrate");
+    petDoubleClickCount = 0;
+  } else {
+    const phrases = ["냠냠", "헤헤", "좋아", "고마워", "💕", "ㅎㅎ", "또!"];
+    showSpeech(phrases[Math.floor(Math.random() * phrases.length)], 2000);
+    if (win && !win.isDestroyed()) win.webContents.send("mini-feed");
+  }
 });
 
 // ── 커서 따라가기 ──
@@ -1331,8 +1466,10 @@ setInterval(() => {
       speakForState(cur);
       // 통계
       if (cur === "working") bumpStat("toolCalls");
-      else if (cur === "error") bumpStat("errors");
-      else if (cur === "thinking") bumpStat("thinks");
+      else if (cur === "error") {
+        bumpStat("errors");
+        showSystemNotification("Clawd — 에러", "Claude Code 세션에서 에러 발생");
+      } else if (cur === "thinking") bumpStat("thinks");
       _lastStateForSpeech = cur;
     }
   } catch {}
@@ -1440,11 +1577,13 @@ setInterval(() => {
   }
 }, 500);
 
-// 주기적으로 랜덤 대사
+// 주기적으로 랜덤 대사 (커스텀 구절도 포함)
 setInterval(() => {
   if (!win || win.isDestroyed() || !win.isVisible()) return;
   if (Math.random() < 0.4) {
-    const phrase = SPEECH_PHRASES[Math.floor(Math.random() * SPEECH_PHRASES.length)];
+    const custom = getCustomPhrases();
+    const pool = custom.length ? SPEECH_PHRASES.concat(custom) : SPEECH_PHRASES;
+    const phrase = pool[Math.floor(Math.random() * pool.length)];
     showSpeech(phrase, 3500);
   }
 }, 20000);

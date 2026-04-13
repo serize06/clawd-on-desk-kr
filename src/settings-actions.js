@@ -225,6 +225,11 @@ const updateRegistry = {
   // ── Phase 2/3 placeholders — schema reserves these so applyUpdate accepts them ──
   agents: requirePlainObject("agents"),
   themeOverrides: requirePlainObject("themeOverrides"),
+  customPhrases: (value) => Array.isArray(value)
+    ? { status: "ok" }
+    : { status: "error", message: "customPhrases must be an array of strings" },
+  clawdColor: requireString("clawdColor"),
+  dailyPomodoroGoal: requireFiniteNumber("dailyPomodoroGoal"),
 
   // ── Internal — version is owned by prefs.js / migrate(), shouldn't normally
   //    be set via applyUpdate, but we accept it so programmatic upgrades work. ──

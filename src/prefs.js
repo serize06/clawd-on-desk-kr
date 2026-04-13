@@ -85,6 +85,13 @@ const SCHEMA = {
     defaultFactory: () => ({}),
     normalize: normalizeThemeOverrides,
   },
+  customPhrases: {
+    type: "object",
+    defaultFactory: () => [],
+    normalize: (v) => Array.isArray(v) ? v.filter(x => typeof x === "string" && x.length && x.length < 100).slice(0, 100) : [],
+  },
+  clawdColor: { type: "string", default: "" },
+  dailyPomodoroGoal: { type: "number", default: 4 },
 };
 
 const SCHEMA_KEYS = Object.freeze(Object.keys(SCHEMA));

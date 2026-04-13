@@ -139,6 +139,22 @@ module.exports = function initMenu(ctx) {
         click: () => ctx.speakRecentCommit && ctx.speakRecentCommit(),
       },
       {
+        label: "🧬 복제",
+        click: () => ctx.cloneClawd && ctx.cloneClawd(),
+      },
+      {
+        label: "📝 커스텀 대사 추가",
+        click: () => ctx.promptCustomPhrase && ctx.promptCustomPhrase(),
+      },
+      {
+        label: "🎯 일일 목표 설정",
+        click: () => ctx.setDailyGoal && ctx.setDailyGoal(),
+      },
+      {
+        label: "🎨 색 바꾸기",
+        click: () => ctx.setClawdColor && ctx.setClawdColor(),
+      },
+      {
         label: "⏲ 포모도로",
         submenu: [
           { label: "▶ 25분 시작", click: () => ctx.startPomodoro && ctx.startPomodoro(25) },
@@ -514,6 +530,22 @@ module.exports = function initMenu(ctx) {
       {
         label: "📝 최근 커밋",
         click: () => ctx.speakRecentCommit && ctx.speakRecentCommit(),
+      },
+      {
+        label: "🧬 복제",
+        click: () => ctx.cloneClawd && ctx.cloneClawd(),
+      },
+      {
+        label: "📝 커스텀 대사 추가",
+        click: () => ctx.promptCustomPhrase && ctx.promptCustomPhrase(),
+      },
+      {
+        label: "🎯 일일 목표 설정",
+        click: () => ctx.setDailyGoal && ctx.setDailyGoal(),
+      },
+      {
+        label: "🎨 색 바꾸기",
+        click: () => ctx.setClawdColor && ctx.setClawdColor(),
       },
       {
         label: "⏲ 포모도로",

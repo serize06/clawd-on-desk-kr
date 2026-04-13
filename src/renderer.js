@@ -825,3 +825,37 @@ window.electronAPI.onCelebrate(() => {
     setTimeout(() => el.remove(), 2000);
   }
 });
+
+// ── 먹이 미니게임: 더블클릭하면 음식 이모지가 Clawd 위에서 떨어짐 ──
+const FOOD_EMOJIS = ["🍎","🍖","🍪","🧁","🍓","🥕","🍊","🍰","🍗","🍬","🍩"];
+function dropFood() {
+  const el = document.createElement("div");
+  el.textContent = FOOD_EMOJIS[Math.floor(Math.random() * FOOD_EMOJIS.length)];
+  el.style.cssText = `
+    position:fixed; left:${40 + Math.random() * 20}%; top:-40px;
+    font-size:${24 + Math.random() * 16}px; pointer-events:none; z-index:9999;
+  `;
+  document.body.appendChild(el);
+  const endY = window.innerHeight * 0.35;
+  el.animate([
+    { transform: "translateY(0) rotate(0)" },
+    { transform: `translateY(${endY}px) rotate(${(Math.random()-0.5)*720}deg)` },
+  ], { duration: 900, easing: "cubic-bezier(.2,1,.4,1)" });
+  setTimeout(() => el.remove(), 1000);
+}
+try { window.electronAPI && window.electronAPI.onMiniFeed && window.electronAPI.onMiniFeed(dropFood); } catch {}
+
+// ── 색상 커스터마이즈: SVG 내 body 색 변경 ──
+try {
+  window.electronAPI && window.electronAPI.onSetClawdColor && window.electronAPI.onSetClawdColor((color) => {
+    // CSS 필터로 색조 회전 방식 (간이 구현)
+    const container = document.getElementById("pet-container");
+    if (!container) return;
+    if (!color) { container.style.filter = ""; return; }
+    // hex → hue-rotate 근사값
+    const hex = color.replace("#", "");
+    const r = parseInt(hex.slice(0,2),16), g = parseInt(hex.slice(2,4),16), b = parseInt(hex.slice(4,6),16);
+    const h = Math.atan2(1.732*(g-b), 2*r-g-b) * 180 / Math.PI;
+    container.style.filter = `hue-rotate(${Math.round(h)}deg)`;
+  });
+} catch {}
