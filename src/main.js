@@ -1624,7 +1624,11 @@ function buildClaudeCliSpawn(prompt) {
   const sessionFlag = _clawdSessionInitialized
     ? ["-r", sid]
     : ["--session-id", sid];
-  const baseArgs = ["--model", "haiku", ...sessionFlag, "-p", prompt];
+  // --bare: 훅 스킵 + 간소화 (Clawd 자체 호출이 Clawd 훅을 재귀 호출하는 거 방지)
+  // --permission-mode bypassPermissions: 권한 프롬프트 안 띄움 (하단 터미널 리액트 방지)
+  const baseArgs = ["--model", "haiku", "--bare",
+    "--permission-mode", "bypassPermissions",
+    ...sessionFlag, "-p", prompt];
   if (process.platform === "win32") {
     const exe = findWindowsClaudeExe();
     if (exe) return [exe, baseArgs];
