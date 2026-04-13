@@ -702,8 +702,8 @@ const _menuCtx = {
       if (process.platform === "win32") {
         const escaped = prompt.replace(/'/g, "'\"'\"'");
         cmd = "wsl.exe";
-        // claude는 ~/.local/bin/claude 에 있음. PATH 명시 후 실행.
-        args = ["--", "bash", "-c", `export PATH="$HOME/.local/bin:$PATH"; claude -p '${escaped}'`];
+        // -d Ubuntu: claude가 설치된 distro 지정 (기본 distro가 Ubuntu-24.04라도 Ubuntu 사용)
+        args = ["-d", "Ubuntu", "--", "bash", "-c", `export PATH="$HOME/.local/bin:$PATH"; claude -p '${escaped}'`];
       } else {
         cmd = "claude";
         args = ["-p", prompt];
