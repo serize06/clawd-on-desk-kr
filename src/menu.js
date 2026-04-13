@@ -128,6 +128,17 @@ module.exports = function initMenu(ctx) {
         click: (item) => { ctx.followCursorEnabled = item.checked; },
       },
       {
+        label: "📊 세션 통계",
+        click: () => {
+          const msg = ctx.getStatsSummary ? ctx.getStatsSummary() : "통계 없음";
+          ctx.showSpeech && ctx.showSpeech(msg, 6000);
+        },
+      },
+      {
+        label: "📝 최근 커밋",
+        click: () => ctx.speakRecentCommit && ctx.speakRecentCommit(),
+      },
+      {
         label: "⏲ 포모도로",
         submenu: [
           { label: "▶ 25분 시작", click: () => ctx.startPomodoro && ctx.startPomodoro(25) },
@@ -492,6 +503,17 @@ module.exports = function initMenu(ctx) {
         type: "checkbox",
         checked: !!ctx.followCursorEnabled,
         click: (item) => { ctx.followCursorEnabled = item.checked; },
+      },
+      {
+        label: "📊 세션 통계",
+        click: () => {
+          const msg = ctx.getStatsSummary ? ctx.getStatsSummary() : "통계 없음";
+          ctx.showSpeech && ctx.showSpeech(msg, 6000);
+        },
+      },
+      {
+        label: "📝 최근 커밋",
+        click: () => ctx.speakRecentCommit && ctx.speakRecentCommit(),
       },
       {
         label: "⏲ 포모도로",

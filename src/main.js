@@ -673,6 +673,18 @@ const _menuCtx = {
   set smartSpeechEnabled(v) { smartSpeechEnabled = !!v; },
   startPomodoro: (min) => startPomodoro(min),
   cancelPomodoro: () => cancelPomodoro(),
+  getStatsSummary: () => getStatsSummary(),
+  speakRecentCommit: () => speakRecentCommit(),
+  cloneClawd: () => {
+    try {
+      const { exec } = require("child_process");
+      exec(`"${process.execPath}" "${require("path").resolve(__dirname, "..", "launch.js")}"`, {
+        detached: true,
+        stdio: "ignore",
+        env: { ...process.env, CLAWD_CLONE: "1" },
+      });
+    } catch {}
+  },
   get walkEnabled() { return walkEnabled; },
   set walkEnabled(v) {
     walkEnabled = !!v;
@@ -1040,7 +1052,10 @@ function createSpeechWindow() {
   return speechWin;
 }
 
+function _bumpSpeechStat() { try { sessionStats.speeches++; } catch {} }
+
 function showSpeech(text, durationMs = 3000) {
+  _bumpSpeechStat();
   if (!win || win.isDestroyed()) return;
   createSpeechWindow();
   const p = win.getBounds();
@@ -1102,6 +1117,57 @@ function startGravityFall() {
   }, 16);
 }
 
+// ── 세션 통계 ──
+const sessionStats = {
+  startedAt: Date.now(),
+  toolCalls: 0,
+  errors: 0,
+  thinks: 0,
+  pomodoros: 0,
+  speeches: 0,
+};
+
+function bumpStat(key, n = 1) {
+  if (sessionStats[key] !== undefined) sessionStats[key] += n;
+}
+
+function getStatsSummary() {
+  const mins = Math.round((Date.now() - sessionStats.startedAt) / 60000);
+  return `⏱ ${mins}분  🔧 도구 ${sessionStats.toolCalls}  ❌ 에러 ${sessionStats.errors}  💭 생각 ${sessionStats.thinks}  🍅 포모도로 ${sessionStats.pomodoros}  💬 말 ${sessionStats.speeches}`;
+}
+
+// ── 긴 생각 감지: 10분 넘게 thinking이면 "괜찮아?" ──
+let lastThinkingStartedAt = 0;
+setInterval(() => {
+  try {
+    const cs = _state.getCurrentState();
+    if (cs === "thinking") {
+      if (lastThinkingStartedAt === 0) lastThinkingStartedAt = Date.now();
+      else if (Date.now() - lastThinkingStartedAt > 10 * 60 * 1000) {
+        showSpeech("벌써 10분째… 괜찮아?", 4000);
+        lastThinkingStartedAt = Date.now();  // 재트리거 막기 위해 리셋
+      }
+    } else {
+      lastThinkingStartedAt = 0;
+    }
+  } catch {}
+}, 30000);
+
+// ── 파티클 축하 (attention 전환 시) ──
+let lastAttentionAt = 0;
+setInterval(() => {
+  try {
+    const cs = _state.getCurrentState();
+    const now = Date.now();
+    if (cs === "attention" && now - lastAttentionAt > 3000) {
+      lastAttentionAt = now;
+      if (win && !win.isDestroyed()) {
+        win.webContents.send("celebrate");
+      }
+    }
+  } catch {}
+}, 500);
+
 // ── 포모도로 타이머 ──
 let pomodoroEndsAt = 0;
 let pomodoroTimer = null;
@@ -1114,6 +1180,7 @@ function startPomodoro(minutes = 25) {
   pomodoroTimer = setTimeout(() => {
     pomodoroTimer = null;
     pomodoroEndsAt = 0;
+    bumpStat("pomodoros");
     try { setState("attention", "clawd-happy.svg"); } catch {}
     showSpeech("끝! 휴식 시간~", 5000);
     try {
@@ -1255,13 +1322,17 @@ function smartSpeakForState(state) {
   smartSpeak(label, fallback);
 }
 
-// 상태 전환 감지 → 이벤트 말풍선
+// 상태 전환 감지 → 이벤트 말풍선 + 통계
 let _lastStateForSpeech = "idle";
 setInterval(() => {
   try {
     const cur = _state.getCurrentState();
     if (cur && cur !== _lastStateForSpeech) {
       speakForState(cur);
+      // 통계
+      if (cur === "working") bumpStat("toolCalls");
+      else if (cur === "error") bumpStat("errors");
+      else if (cur === "thinking") bumpStat("thinks");
       _lastStateForSpeech = cur;
     }
   } catch {}
@@ -1334,6 +1405,32 @@ setInterval(() => {
     }
   }
 }, 50);
+
+// ── 글로벌 단축키: Ctrl+Shift+Space = Clawd에게 AI 질문 ──
+app.whenReady().then(() => {
+  try {
+    globalShortcut.register("CommandOrControl+Shift+Space", () => {
+      if (smartSpeechEnabled) {
+        smartSpeak("사용자가 Ctrl+Shift+Space로 너한테 말 걸었어. 친근하게 답해", "불렀어?");
+      } else {
+        const phrases = ["불렀어?", "뭐해?", "여기있어", "응?"];
+        showSpeech(phrases[Math.floor(Math.random() * phrases.length)], 3000);
+      }
+    });
+  } catch {}
+});
+
+// ── 최근 커밋 말하기 ──
+function speakRecentCommit() {
+  const { exec } = require("child_process");
+  const cmd = process.platform === "win32"
+    ? 'git -C "%cd%" log -1 --pretty=%%s 2>nul'
+    : 'cd ~ && git log -1 --pretty=%s 2>/dev/null';
+  exec(cmd, { timeout: 3000 }, (err, stdout) => {
+    const msg = (stdout || "").trim().slice(0, 40);
+    showSpeech(msg ? `최근: "${msg}"` : "최근 커밋 없음", 4500);
+  });
+}
 
 // 어지러움 해제 체크
 setInterval(() => {

@@ -799,3 +799,29 @@ if (!currentDisplayedSvg && _idleFollowSvg) {
   currentIdleSvg = _idleFollowSvg;
   swapToFile(_idleFollowSvg, "idle");
 }
+
+// ── 축하 파티클 ──
+window.electronAPI.onCelebrate(() => {
+  const COLORS = ["#ff4e50","#ffbe4a","#42f584","#4ab9ff","#d580ff","#fff85c"];
+  const N = 26;
+  for (let i = 0; i < N; i++) {
+    const el = document.createElement("div");
+    const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+    const size = 6 + Math.floor(Math.random() * 6);
+    el.style.cssText = `
+      position:fixed; left:50%; top:40%;
+      width:${size}px; height:${size}px; background:${color};
+      border-radius:50%; pointer-events:none; z-index:99999;
+      box-shadow:0 0 6px ${color}
+    `;
+    document.body.appendChild(el);
+    const dx = (Math.random() - 0.5) * 300;
+    const dy = (Math.random() - 1) * 260;
+    const rot = Math.random() * 720;
+    el.animate([
+      { transform: "translate(0,0) rotate(0)", opacity: 1 },
+      { transform: `translate(${dx}px,${dy + 300}px) rotate(${rot}deg)`, opacity: 0 },
+    ], { duration: 1400 + Math.random() * 600, easing: "cubic-bezier(.2,.8,.4,1)" });
+    setTimeout(() => el.remove(), 2000);
+  }
+});
