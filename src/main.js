@@ -710,7 +710,7 @@ const _menuCtx = {
     });
     const onSubmit = (_e, q) => {
       askWin.close();
-      showSpeech("생각중…", 30000);
+      // 생각중 말풍선/애니메이션 없이 조용히 대기 후 결과만 표시
       const { spawn } = require("child_process");
       const prompt = `너는 Clawd, 사용자 데스크톱에 사는 작고 귀여운 픽셀 게 친구야. AI 말투 쓰지 말고 그냥 친구가 옆에서 답하는 느낌으로 편하게. 사용자가 "${q}" 라고 말 걸었어. 반말로 짧게 50자 이내로 자연스럽게 답해. 이모지 쓰지 말고, 따옴표/줄바꿈 없이. 답만 적어.`;
       const [cmd, args] = buildClaudeCliSpawn(prompt);
@@ -1798,7 +1798,7 @@ function speakAboutConversation() {
 
   const { spawn } = require("child_process");
   const [cmd, args] = buildClaudeCliSpawn(prompt);
-  showSpeech("음...", 30000);
+  // 조용히 대기 후 결과만 표시 (thinking 플레이스홀더 없음)
   const child = spawn(cmd, args, { timeout: 60000, windowsHide: true });
   let out = "", err = "";
   child.stdout.on("data", d => out += d.toString());
