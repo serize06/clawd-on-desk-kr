@@ -696,17 +696,15 @@ const _menuCtx = {
       askWin.close();
       showSpeech("생각중…", 30000);
       const { spawn } = require("child_process");
-      const prompt = `사용자 질문: "${q}"\n너는 Clawd라는 귀여운 게 마스코트야. 반말로 50자 이내 짧게 답해. 따옴표/줄바꿈 없이.`;
-      // Windows에선 wsl.exe -e bash -c '...' 로 감싸기 (인수 처리 안정)
+      const prompt = `너는 Clawd라는 작고 귀여운 픽셀 게 펫이야. 친근한 친구처럼 반말로 답해. 사용자가 "${q}" 라고 물어봤어. 짧고 자연스럽게 50자 이내로 답해. 따옴표/줄바꿈 없이.`;
       let cmd, args;
       if (process.platform === "win32") {
         const escaped = prompt.replace(/'/g, "'\"'\"'");
         cmd = "wsl.exe";
-        // -d Ubuntu: claude가 설치된 distro 지정 (기본 distro가 Ubuntu-24.04라도 Ubuntu 사용)
-        args = ["-d", "Ubuntu", "--", "bash", "-c", `export PATH="$HOME/.local/bin:$PATH"; claude -p '${escaped}'`];
+        args = ["-d", "Ubuntu", "--", "bash", "-c", `export PATH="$HOME/.local/bin:$PATH"; claude --model haiku -p '${escaped}'`];
       } else {
         cmd = "claude";
-        args = ["-p", prompt];
+        args = ["--model", "haiku", "-p", prompt];
       }
       const child = spawn(cmd, args, { timeout: 60000, windowsHide: true });
       let out = "", err = "";
@@ -1497,10 +1495,16 @@ function smartSpeak(context, fallback) {
   smartSpeechLastCall = now;
 
   const { spawn } = require("child_process");
-  const prompt = `너는 Clawd라는 귀여운 게 마스코트야. 사용자가 Claude Code로 코딩 중이고 ${context} 이 생겼어. 이에 반응하는 짧은 한 줄 한국어 대사를 만들어(존댓말 말고 반말, 15자 이내, 따옴표 없이, 줄바꿈 없이).`;
-  // WSL 쪽 claude CLI를 사용 (Windows에선 wsl claude)
-  const cmd = process.platform === "win32" ? "wsl" : "claude";
-  const args = process.platform === "win32" ? ["claude", "-p", prompt] : ["-p", prompt];
+  const prompt = `너는 Clawd라는 작고 귀여운 픽셀 게 펫이야. 사용자 화면에 살면서 반응해. "${context}" 상황에 대해 짧게 반응하는 한 줄 한국어 대사를 만들어(반말, 15자 이내, 따옴표 없이, 줄바꿈 없이).`;
+  let cmd, args;
+  if (process.platform === "win32") {
+    const escaped = prompt.replace(/'/g, "'\"'\"'");
+    cmd = "wsl.exe";
+    args = ["-d", "Ubuntu", "--", "bash", "-c", `export PATH="$HOME/.local/bin:$PATH"; claude --model haiku -p '${escaped}'`];
+  } else {
+    cmd = "claude";
+    args = ["--model", "haiku", "-p", prompt];
+  }
   const child = spawn(cmd, args, { timeout: 15000 });
   let out = "";
   child.stdout.on("data", d => out += d.toString());
@@ -1518,14 +1522,14 @@ function smartSpeak(context, fallback) {
 
 function smartSpeakForState(state) {
   const labelMap = {
-    thinking: "생각하는 상황",
-    working: "작업하는 상황",
-    error: "에러 발생",
-    attention: "작업 완료",
-    notification: "알림",
-    sweeping: "컨텍스트 정리",
-    juggling: "동시 작업",
-    carrying: "파일 이동",
+    thinking: "친구가 뭔가 골똘히 고민 중",
+    working: "친구가 뭔가 하고 있음",
+    error: "뭔가 잘못됐을 때",
+    attention: "좋은 일 끝났을 때",
+    notification: "뭔가 알려줄 때",
+    sweeping: "정리하는 중",
+    juggling: "이것저것 바쁜 상황",
+    carrying: "뭔가 옮기는 중",
   };
   const label = labelMap[state] || state;
   const list = EVENT_SPEECHES[state] || [];
